@@ -12,6 +12,7 @@ from app.models.shipment import Shipment
 from app.routes import trips
 from app.routes import finance
 from app.routes import marketplace
+from app.routes import shipments
 from fastapi.middleware.cors import CORSMiddleware
 
 
@@ -29,6 +30,7 @@ app.include_router(admin.router)
 app.include_router(trips.router)
 app.include_router(finance.router)
 app.include_router(marketplace.router)
+app.include_router(shipments.router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],  # React frontend
