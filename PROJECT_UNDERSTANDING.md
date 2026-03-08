@@ -12,7 +12,7 @@ The current implementation focuses on:
 - Admin stats/dashboard endpoints
 - Finance/insurance applications
 - Vehicle marketplace listing and moderation
-- Basic trip-shipment capacity assignment logic
+- Trip and shipment workflows for shared-capacity logistics
 
 ## 2) Backend architecture
 ### App entrypoint
@@ -35,7 +35,8 @@ The current implementation focuses on:
 - `app/routes/admin.py`: users/drivers/rides listing + aggregate stats.
 - `app/routes/finance.py`: finance/insurance application workflow.
 - `app/routes/marketplace.py`: vehicle listing and admin review.
-- `app/routes/trips.py`: shipment-to-trip assignment with capacity checks.
+- `app/routes/shipments.py`: shipment creation and shipment views.
+- `app/routes/trips.py`: trip creation/listing and shipment assignment with capacity checks.
 
 ## 3) Frontend architecture
 - React entrypoint in `transmaa-frontend/src/main.jsx` and route definitions in `src/App.jsx`.
@@ -48,15 +49,16 @@ The current implementation focuses on:
 ## 4) End-to-end user flows currently implemented
 1. User registers and logs in, receives JWT.
 2. Frontend decodes role from JWT and redirects to role dashboard.
-3. User can request rides.
+3. User can request rides and create shipments.
 4. Driver registers profile and (after admin approval) can accept rides.
-5. Admin can inspect users/drivers/rides and view dashboard stats.
-6. Drivers can apply for finance/insurance and list vehicles in marketplace; admins approve/reject.
+5. Driver can create trips and attach unassigned shipments while capacity remains.
+6. Admin can inspect users/drivers/rides and view dashboard stats.
+7. Drivers can apply for finance/insurance and list vehicles in marketplace; admins approve/reject.
 
 ## 5) Current strengths
 - Clean modular backend route split by business domain.
 - Practical role-based authorization on most critical actions.
-- Ride capacity validation against driver truck capacity.
+- Capacity validation in both ride acceptance and trip-shipment assignment.
 - Admin analytics endpoint consumed by frontend charts.
 
 ## 6) Gaps / risks noticed during review
@@ -74,3 +76,4 @@ The current implementation focuses on:
 - Add backend API tests (pytest + FastAPI TestClient).
 - Add frontend integration smoke tests.
 - Remove committed virtual environment artifacts.
+- Add frontend pages for shipment and trip management to use the new endpoints.
