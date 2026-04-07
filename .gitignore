@@ -1,0 +1,25 @@
+# Python
+venv/
+.venv/
+env/
+__pycache__/
+*.pyc
+
+# Environment variables
+.env
+
+# Node
+node_modules/
+
+# Build files
+dist/
+build/
+
+# VS Code
+.vscode/
+
+# Runtime uploads
+uploads/
+
+# RAG index cache
+.rag_index.json
