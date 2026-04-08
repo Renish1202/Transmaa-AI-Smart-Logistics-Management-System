@@ -1,10 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-from app.database import get_db
-from app.models.trip import Trip
-from app.models.shipment import Shipment
+
 from app.core.security import get_current_user
-from app.models.user import User
+from app.mongodb import serialize_doc, shipments_collection, trips_collection
 
 router = APIRouter(prefix="/trips", tags=["Trips"])
 
@@ -13,28 +10,28 @@ router = APIRouter(prefix="/trips", tags=["Trips"])
 def add_shipment(
     trip_id: int,
     shipment_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
 ):
-
-    trip = db.query(Trip).filter(Trip.id == trip_id).first()
-    shipment = db.query(Shipment).filter(Shipment.id == shipment_id).first()
+    trip = serialize_doc(trips_collection.find_one({"id": trip_id}))
+    shipment = serialize_doc(shipments_collection.find_one({"id": shipment_id}))
 
     if not trip or not shipment:
         raise HTTPException(status_code=404, detail="Not found")
 
-    if shipment.trip_id:
+    if shipment.get("trip_id"):
         raise HTTPException(status_code=400, detail="Already assigned")
 
-    if trip.used_capacity + shipment.weight > trip.total_capacity:
+    if trip.get("used_capacity", 0) + shipment.get("weight", 0) > trip.get("total_capacity", 0):
         raise HTTPException(status_code=400, detail="Truck full")
 
-    shipment.trip_id = trip.id
-    shipment.status = "assigned"
+    shipments_collection.update_one(
+        {"id": shipment_id},
+        {"$set": {"trip_id": trip_id, "status": "assigned"}},
+    )
 
-    trip.used_capacity += shipment.weight
-
-    db.commit()
-    db.refresh(trip)
+    trips_collection.update_one(
+        {"id": trip_id},
+        {"$inc": {"used_capacity": shipment.get("weight", 0)}},
+    )
 
     return {"message": "Shipment added successfully"}

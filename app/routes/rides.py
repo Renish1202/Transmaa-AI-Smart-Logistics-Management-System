@@ -1,199 +1,190 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
 
-from app.database import get_db
-from app.models.ride import Ride
-from app.models.user import User
-from app.schemas.ride import RideCreate, RideResponse
 from app.core.security import get_current_user
+from app.mongodb import (
+    drivers_collection,
+    get_next_sequence,
+    rides_collection,
+    serialize_doc,
+    serialize_docs,
+    utc_now,
+)
+from app.schemas.ride import RideCreate, RideResponse
 
 router = APIRouter(prefix="/rides", tags=["Rides"])
+
 
 @router.post("/request", response_model=RideResponse)
 def request_ride(
     ride: RideCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
-    if current_user.role != "user":
+    if current_user.get("role") != "user":
         raise HTTPException(status_code=403, detail="Only users can request rides")
 
-    new_ride = Ride(
-        passenger_id=current_user.id,
-        pickup_location=ride.pickup_location,
-        drop_location=ride.drop_location,
-        load_weight=ride.load_weight
-    )
-
-    db.add(new_ride)
-    db.commit()
-    db.refresh(new_ride)
-
+    new_ride = {
+        "id": get_next_sequence("rides"),
+        "passenger_id": current_user["id"],
+        "driver_id": None,
+        "pickup_location": ride.pickup_location,
+        "drop_location": ride.drop_location,
+        "load_weight": ride.load_weight,
+        "price": None,
+        "status": "requested",
+        "created_at": utc_now(),
+    }
+    rides_collection.insert_one(new_ride)
     return new_ride
+
 
 @router.get("/pending", response_model=list[RideResponse])
 def get_available_rides(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
-
-    # Only drivers can see available rides
-    if current_user.role != "driver":
+    if current_user.get("role") != "driver":
         raise HTTPException(status_code=403, detail="Only drivers can view rides")
 
-    rides = db.query(Ride).filter(Ride.status == "requested").all()
+    return serialize_docs(rides_collection.find({"status": "requested"}))
 
-    return rides
 
 @router.put("/accept/{ride_id}", response_model=RideResponse)
 def accept_ride(
     ride_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
-
-    # Only drivers allowed
-    if current_user.role != "driver":
+    if current_user.get("role") != "driver":
         raise HTTPException(status_code=403, detail="Only drivers can accept rides")
 
-    # Get driver profile
-    from app.models.driver import Driver
-    driver = db.query(Driver).filter(Driver.user_id == current_user.id).first()
-
+    driver = serialize_doc(drivers_collection.find_one({"user_id": current_user["id"]}))
     if not driver:
         raise HTTPException(status_code=400, detail="Driver profile not found")
 
-    if driver.verification_status != "approved":
+    if driver.get("verification_status") != "approved":
         raise HTTPException(status_code=403, detail="Driver not verified")
 
-    # Get ride
-    ride = db.query(Ride).filter(Ride.id == ride_id).first()
-
+    ride = serialize_doc(rides_collection.find_one({"id": ride_id}))
     if not ride:
         raise HTTPException(status_code=404, detail="Ride not found")
 
-    if ride.status != "requested":
+    if ride.get("status") != "requested":
         raise HTTPException(status_code=400, detail="Ride already taken")
 
-    # 🚛 CAPACITY VALIDATION
-    if ride.load_weight > driver.capacity_tons:
-        raise HTTPException(
-            status_code=400,
-            detail="Load exceeds truck capacity"
-        )
+    if ride["load_weight"] > driver["capacity_tons"]:
+        raise HTTPException(status_code=400, detail="Load exceeds truck capacity")
 
-    # Accept ride
-    ride.driver_id = current_user.id
-    ride.status = "accepted"
-
-    db.commit()
-    db.refresh(ride)
-
+    rides_collection.update_one(
+        {"id": ride_id},
+        {"$set": {"driver_id": current_user["id"], "status": "accepted"}},
+    )
+    ride["driver_id"] = current_user["id"]
+    ride["status"] = "accepted"
     return ride
 
 
 @router.put("/start/{ride_id}")
 def start_ride(
     ride_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
-
-    if current_user.role != "driver":
+    if current_user.get("role") != "driver":
         raise HTTPException(status_code=403, detail="Only driver can start ride")
 
-    ride = db.query(Ride).filter(Ride.id == ride_id).first()
-
+    ride = serialize_doc(rides_collection.find_one({"id": ride_id}))
     if not ride:
         raise HTTPException(status_code=404, detail="Ride not found")
 
-    if ride.driver_id != current_user.id:
+    if ride.get("driver_id") != current_user["id"]:
         raise HTTPException(status_code=403, detail="Not your ride")
 
-    if ride.status != "accepted":
+    if ride.get("status") != "accepted":
         raise HTTPException(status_code=400, detail="Ride must be accepted first")
 
-    ride.status = "started"
-
-    db.commit()
+    rides_collection.update_one({"id": ride_id}, {"$set": {"status": "started"}})
     return {"message": "Ride started"}
 
 
 @router.put("/in-transit/{ride_id}")
 def in_transit(
     ride_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
-
-    if current_user.role != "driver":
+    if current_user.get("role") != "driver":
         raise HTTPException(status_code=403)
 
-    ride = db.query(Ride).filter(Ride.id == ride_id).first()
+    ride = serialize_doc(rides_collection.find_one({"id": ride_id}))
+    if not ride:
+        raise HTTPException(status_code=404, detail="Ride not found")
 
-    if ride.status != "started":
+    if ride.get("status") != "started":
         raise HTTPException(status_code=400, detail="Ride must be started first")
 
-    ride.status = "in_transit"
-
-    db.commit()
+    rides_collection.update_one({"id": ride_id}, {"$set": {"status": "in_transit"}})
     return {"message": "Ride is now in transit"}
 
 
 @router.put("/deliver/{ride_id}")
 def deliver_ride(
     ride_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
-
-    if current_user.role != "driver":
+    if current_user.get("role") != "driver":
         raise HTTPException(status_code=403)
 
-    ride = db.query(Ride).filter(Ride.id == ride_id).first()
+    ride = serialize_doc(rides_collection.find_one({"id": ride_id}))
+    if not ride:
+        raise HTTPException(status_code=404, detail="Ride not found")
 
-    if ride.status != "in_transit":
+    if ride.get("status") != "in_transit":
         raise HTTPException(status_code=400, detail="Ride not in transit")
 
-    ride.status = "delivered"
-
-    db.commit()
+    rides_collection.update_one({"id": ride_id}, {"$set": {"status": "delivered"}})
     return {"message": "Ride delivered"}
 
 
 @router.put("/complete/{ride_id}")
 def complete_ride(
     ride_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
-
-    if current_user.role not in ["admin", "driver"]:
+    if current_user.get("role") not in ["admin", "driver"]:
         raise HTTPException(status_code=403)
 
-    ride = db.query(Ride).filter(Ride.id == ride_id).first()
+    ride = serialize_doc(rides_collection.find_one({"id": ride_id}))
+    if not ride:
+        raise HTTPException(status_code=404, detail="Ride not found")
 
-    if ride.status != "delivered":
+    if ride.get("status") != "delivered":
         raise HTTPException(status_code=400, detail="Ride not delivered yet")
 
-    ride.status = "completed"
-
-    db.commit()
+    rides_collection.update_one({"id": ride_id}, {"$set": {"status": "completed"}})
     return {"message": "Ride completed successfully"}
+
 
 @router.put("/cancel/{ride_id}")
 def cancel_ride(
     ride_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
+    ride = serialize_doc(rides_collection.find_one({"id": ride_id}))
+    if not ride:
+        raise HTTPException(status_code=404, detail="Ride not found")
 
-    ride = db.query(Ride).filter(Ride.id == ride_id).first()
-
-    if ride.status not in ["requested", "accepted"]:
+    if ride.get("status") not in ["requested", "accepted"]:
         raise HTTPException(status_code=400, detail="Cannot cancel at this stage")
 
-    ride.status = "cancelled"
-
-    db.commit()
+    rides_collection.update_one({"id": ride_id}, {"$set": {"status": "cancelled"}})
     return {"message": "Ride cancelled"}
+
+
+@router.get("/my")
+def my_rides(current_user: dict = Depends(get_current_user)):
+    if current_user.get("role") != "user":
+        raise HTTPException(status_code=403, detail="Only users can view their rides")
+    return serialize_docs(rides_collection.find({"passenger_id": current_user["id"]}).sort("id", -1))
+
+
+@router.get("/driver/my")
+def my_driver_rides(current_user: dict = Depends(get_current_user)):
+    if current_user.get("role") != "driver":
+        raise HTTPException(status_code=403, detail="Only drivers can view their rides")
+    return serialize_docs(rides_collection.find({"driver_id": current_user["id"]}).sort("id", -1))

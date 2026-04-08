@@ -3,13 +3,9 @@ from jose import JWTError, jwt
 from datetime import datetime, timedelta
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from sqlalchemy.orm import Session
-from app.database import get_db
-from app.models.user import User
+from app.config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
+from app.mongodb import users_collection, serialize_doc
 
-SECRET_KEY = "supersecretkey123"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -39,9 +35,7 @@ def create_access_token(data: dict):
 
 def get_current_user(
     token: str = Depends(oauth2_scheme),
-    db: Session = Depends(get_db)
 ):
-    print("TOKEN RECEIVED:", token) 
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials"
@@ -50,31 +44,29 @@ def get_current_user(
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("sub")
-        role: str = payload.get("role")
-
         if email is None:
             raise credentials_exception
 
     except JWTError:
         raise credentials_exception
 
-    user = db.query(User).filter(User.email == email).first()
+    user = serialize_doc(users_collection.find_one({"email": email}))
 
     if user is None:
         raise credentials_exception
 
     return user
 
-def require_admin(current_user: User = Depends(get_current_user)):
-    if current_user.role != "admin":
+def require_admin(current_user: dict = Depends(get_current_user)):
+    if current_user.get("role") != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required"
         )
     return current_user
 
-def require_driver(current_user: User = Depends(get_current_user)):
-    if current_user.role != "driver":
+def require_driver(current_user: dict = Depends(get_current_user)):
+    if current_user.get("role") != "driver":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Driver access required"
