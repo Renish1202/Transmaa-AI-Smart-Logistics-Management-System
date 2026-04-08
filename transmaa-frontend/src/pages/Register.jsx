@@ -19,13 +19,66 @@ function Register() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    const payload = {
+      ...form,
+      email: form.email.trim().toLowerCase(),
+      phone: form.phone?.trim() || "",
+    };
+
     try {
-      await API.post("/auth/register", form);
-      alert("Registered successfully!");
-      navigate("/");
+      await API.post("/auth/register", payload);
     } catch (error) {
-      console.log(error);
-      alert("Registration failed");
+      console.log("register error", error);
+      const detail = error.response?.data?.detail;
+      if (Array.isArray(detail)) {
+        alert(detail.map((item) => item.msg).join("\n"));
+      } else if (typeof detail === "string") {
+        alert(detail);
+      } else if (error.message) {
+        alert(`Registration failed: ${error.message}`);
+      } else {
+        alert("Registration failed");
+      }
+      return;
+    }
+
+    try {
+      const loginData = new URLSearchParams();
+      loginData.append("username", payload.email);
+      loginData.append("password", payload.password);
+
+      const response = await API.post("/auth/login", loginData, {
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+      });
+
+      localStorage.setItem("token", response.data.access_token);
+
+      const tokenPayload = JSON.parse(atob(response.data.access_token.split(".")[1]));
+      localStorage.setItem("role", tokenPayload.role);
+      localStorage.setItem("email", tokenPayload.sub);
+
+      alert("Registered successfully!");
+
+      if (tokenPayload.role === "driver") {
+        navigate("/verify-driver");
+      } else if (tokenPayload.role === "admin") {
+        navigate("/admin");
+      } else {
+        navigate("/user");
+      }
+    } catch (error) {
+      console.log("auto-login error", error);
+      const detail = error.response?.data?.detail;
+      if (typeof detail === "string") {
+        alert(`Registered, but login failed: ${detail}`);
+      } else if (error.message) {
+        alert(`Registered, but login failed: ${error.message}`);
+      } else {
+        alert("Registered, but login failed. Please login manually.");
+      }
+      navigate("/");
     }
   };
 
@@ -39,13 +92,16 @@ function Register() {
 
         <input
           name="email"
+          type="email"
           placeholder="Email"
           onChange={handleChange}
           className="w-full mb-3 p-2 border rounded"
+          required
         />
 
         <input
           name="phone"
+          type="tel"
           placeholder="Phone"
           onChange={handleChange}
           className="w-full mb-3 p-2 border rounded"
@@ -57,16 +113,18 @@ function Register() {
           placeholder="Password"
           onChange={handleChange}
           className="w-full mb-3 p-2 border rounded"
+          minLength={8}
+          required
         />
 
         <select
           name="role"
           onChange={handleChange}
           className="w-full mb-3 p-2 border rounded"
+          required
         >
           <option value="user">User</option>
           <option value="driver">Driver</option>
-          <option value="admin">Admin</option>
         </select>
 
         <button className="w-full bg-blue-500 text-white p-2 rounded">

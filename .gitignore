@@ -21,5 +21,10 @@ build/
 # Runtime uploads
 uploads/
 
+# Local docs
+*.docx
+*.pdf
+~$*.docx
+
 # RAG index cache
 .rag_index.json
