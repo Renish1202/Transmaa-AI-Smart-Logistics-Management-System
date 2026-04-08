@@ -47,6 +47,12 @@ export default function Layout({ children }) {
               >
                 My Rides
               </button>
+              <button
+                onClick={() => navigate("/verify-driver")}
+                className="block w-full text-left hover:bg-blue-600 p-2 rounded"
+              >
+                Driver KYC
+              </button>
             </>
           )}
 
@@ -60,6 +66,13 @@ export default function Layout({ children }) {
               </button>
             </>
           )}
+
+          <button
+            onClick={() => navigate("/support")}
+            className="block w-full text-left hover:bg-blue-600 p-2 rounded"
+          >
+            Support Chat
+          </button>
 
         </nav>
 

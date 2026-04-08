@@ -1,0 +1,142 @@
+import { useState } from "react";
+import API from "../services/api";
+
+export default function SupportChatPanel({ height = "70vh" }) {
+  const [messages, setMessages] = useState([
+    { role: "assistant", content: "Hi! How can I help you today?" },
+  ]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [pendingAction, setPendingAction] = useState(null);
+
+  const sendToAgent = async (text, opts = {}) => {
+    const newMessages = [...messages, { role: "user", content: text }];
+    setMessages(newMessages);
+    setInput("");
+    setLoading(true);
+
+    try {
+      const response = await API.post("/ai/agent", {
+        message: text,
+        history: newMessages
+          .filter((msg) => msg.role !== "system")
+          .slice(-10),
+        pending_action: opts.pendingAction || null,
+        confirm: typeof opts.confirm === "boolean" ? opts.confirm : null,
+      });
+
+      const reply = response.data?.reply || "Sorry, I didn't get that.";
+      setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+      setPendingAction(response.data?.pending_action || null);
+    } catch (error) {
+      console.log(error.response?.data);
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: "Support is temporarily unavailable. Please try again." },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const sendMessage = async (e) => {
+    e.preventDefault();
+    const trimmed = input.trim();
+    if (!trimmed || loading) return;
+
+    if (pendingAction) {
+      const normalized = trimmed.toLowerCase();
+      if (["yes", "y", "confirm", "ok", "okay"].includes(normalized)) {
+        await sendToAgent(trimmed, { pendingAction, confirm: true });
+        return;
+      }
+      if (["no", "n", "cancel", "stop"].includes(normalized)) {
+        await sendToAgent(trimmed, { pendingAction, confirm: false });
+        return;
+      }
+    }
+
+    await sendToAgent(trimmed);
+  };
+
+  const confirmPending = async (confirm) => {
+    if (!pendingAction || loading) return;
+    const text = confirm ? "yes" : "no";
+    await sendToAgent(text, { pendingAction, confirm });
+  };
+
+  return (
+    <div className="flex flex-col" style={{ height }}>
+      <div className="mb-4">
+        <h1 className="text-2xl font-bold">Support Chat</h1>
+        <p className="text-sm text-gray-500">Ask anything about your account, rides, or payments.</p>
+      </div>
+
+      <div className="flex-1 overflow-y-auto space-y-3 p-4 border rounded bg-gray-50">
+        {messages.map((msg, idx) => (
+          <div
+            key={idx}
+            className={
+              msg.role === "user"
+                ? "flex justify-end"
+                : "flex justify-start"
+            }
+          >
+            <div
+              className={
+                msg.role === "user"
+                  ? "bg-blue-600 text-white px-4 py-2 rounded-lg max-w-[80%]"
+                  : "bg-white text-gray-800 px-4 py-2 rounded-lg border max-w-[80%]"
+              }
+            >
+              {msg.content}
+            </div>
+          </div>
+        ))}
+        {loading && (
+          <div className="flex justify-start">
+            <div className="bg-white text-gray-500 px-4 py-2 rounded-lg border">Typing...</div>
+          </div>
+        )}
+      </div>
+
+      <form onSubmit={sendMessage} className="mt-4 flex gap-2">
+        <input
+          type="text"
+          className="flex-1 border rounded p-3"
+          placeholder="Type your message"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+        />
+        <button
+          type="submit"
+          className="bg-blue-600 text-white px-5 rounded hover:bg-blue-700 disabled:opacity-60"
+          disabled={loading}
+        >
+          Send
+        </button>
+      </form>
+
+      {pendingAction ? (
+        <div className="mt-3 flex gap-2">
+          <button
+            type="button"
+            onClick={() => confirmPending(true)}
+            className="px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700 disabled:opacity-60"
+            disabled={loading}
+          >
+            Confirm
+          </button>
+          <button
+            type="button"
+            onClick={() => confirmPending(false)}
+            className="px-4 py-2 bg-rose-600 text-white rounded hover:bg-rose-700 disabled:opacity-60"
+            disabled={loading}
+          >
+            Cancel
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}

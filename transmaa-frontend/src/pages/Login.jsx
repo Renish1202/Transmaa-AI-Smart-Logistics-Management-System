@@ -1,6 +1,6 @@
 import { useState } from "react";
-import axios from "axios";
 import { useNavigate, Link } from "react-router-dom";
+import API from "../services/api";
 
 export default function Login() {
 
@@ -17,8 +17,8 @@ export default function Login() {
       formData.append("username", email);
       formData.append("password", password);
 
-      const response = await axios.post(
-        "http://127.0.0.1:8000/auth/login",
+      const response = await API.post(
+        "/auth/login",
         formData,
         {
           headers: {
@@ -99,7 +99,7 @@ export default function Login() {
           <hr className="flex-grow border-gray-300"/>
         </div>
 
-        {/* Register Links */}
+        {/* Account Links */}
 
         <div className="flex flex-col gap-2 text-center">
 
@@ -107,14 +107,14 @@ export default function Login() {
             to="/register"
             className="text-blue-600 hover:underline"
           >
-            Register as Passenger
+            Register
           </Link>
 
           <Link
-            to="/driver-register"
-            className="text-green-600 hover:underline"
+            to="/forgot-password"
+            className="text-gray-600 hover:underline"
           >
-            Register as Driver
+            Forgot Password?
           </Link>
 
         </div>
