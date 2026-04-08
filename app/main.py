@@ -6,6 +6,8 @@ from app.core.security import get_current_user, require_admin
 from app.mongodb import ensure_indexes
 from app.routes import admin, admin_ops, auth, drivers, finance, marketplace, rides, trips
 from app.routes import ai_support, ai_agent
+from app.config import FRONTEND_BASE_URL
+
 
 app = FastAPI(title="Transmaa API")
 app.include_router(auth.router)
@@ -20,7 +22,11 @@ app.include_router(finance.router)
 app.include_router(marketplace.router)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+        FRONTEND_BASE_URL,
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
