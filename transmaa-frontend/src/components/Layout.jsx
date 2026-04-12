@@ -15,8 +15,13 @@ export default function Layout({ children }) {
 
       {/* Sidebar */}
       <div className="w-64 bg-blue-700 text-white flex flex-col">
-        <div className="p-6 text-2xl font-bold border-b border-blue-500">
-          🚛 Transmaa
+        <div className="p-6 border-b border-blue-500 flex items-center gap-3">
+          <img
+            src="/transmaa-icon.svg"
+            alt="Transmaa"
+            className="h-10 w-10"
+          />
+          <span className="text-2xl font-bold tracking-wide">Transmaa</span>
         </div>
 
         <nav className="flex-1 p-4 space-y-4">
@@ -96,3 +101,4 @@ export default function Layout({ children }) {
     </div>
   );
 }
+

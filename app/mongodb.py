@@ -18,6 +18,7 @@ marketplace_collection = mongo_db["vehicle_listings"]
 invoices_collection = mongo_db["invoices"]
 pod_collection = mongo_db["pod_documents"]
 route_plans_collection = mongo_db["route_plans"]
+tracking_collection = mongo_db["tracking"]
 counters_collection = mongo_db["counters"]
 
 
@@ -70,3 +71,5 @@ def ensure_indexes():
     pod_collection.create_index([("load_id", ASCENDING)])
     route_plans_collection.create_index([("id", ASCENDING)], unique=True)
     route_plans_collection.create_index([("load_id", ASCENDING)])
+    tracking_collection.create_index([("ride_id", ASCENDING)], unique=True)
+    tracking_collection.create_index([("updated_at", ASCENDING)])

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1200" height="400" viewBox="0 0 1200 400" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="400" fill="#FFFFFF"/>
+  <g transform="translate(60 40) scale(0.9)">
+    <g fill="#1E6FB9">
+      <polygon points="120,110 255,110 300,90 300,120 255,140 120,140" />
+      <polygon points="135,150 250,150 290,132 290,162 250,182 135,182" />
+      <polygon points="150,190 245,190 280,176 280,206 245,220 150,220" />
+      <rect x="30" y="140" width="110" height="70" rx="12" />
+      <rect x="60" y="115" width="70" height="30" rx="8" />
+      <polygon points="20,170 30,140 30,210" />
+    </g>
+    <rect x="80" y="150" width="40" height="20" rx="4" fill="#FFFFFF"/>
+    <circle cx="60" cy="210" r="18" fill="#FFFFFF"/>
+  </g>
+  <line x1="420" y1="250" x2="1120" y2="250" stroke="#1E6FB9" stroke-width="6" stroke-linecap="round"/>
+  <text x="420" y="220" font-family="Poppins, Montserrat, Futura, Avenir, sans-serif" font-size="120" font-weight="700" letter-spacing="4" fill="#1E6FB9">TRANSMAA</text>
+</svg>

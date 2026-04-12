@@ -81,7 +81,15 @@ export default function AdminDashboard() {
   const [ops, setOps] = useState(defaultOps);
   const [loading, setLoading] = useState(true);
   const [pendingDrivers, setPendingDrivers] = useState([]);
+  const [tracking, setTracking] = useState([]);
+  const [trackingLoading, setTrackingLoading] = useState(false);
+  const [trackingError, setTrackingError] = useState("");
   const apiBaseUrl = API.defaults.baseURL || "";
+  const currentUserEmail = localStorage.getItem("email");
+  const currentUserRole = localStorage.getItem("role");
+  const currentUserLabel = currentUserEmail
+    ? `${currentUserEmail}${currentUserRole ? ` · ${currentUserRole}` : ""}`
+    : (currentUserRole || "Admin");
 
   const handleLogout = () => {
     localStorage.removeItem("token");
@@ -99,11 +107,31 @@ export default function AdminDashboard() {
     setPendingDrivers(res.data || []);
   };
 
+  const refreshTracking = async () => {
+    setTrackingLoading(true);
+    setTrackingError("");
+    try {
+      const res = await API.get("/tracking/active");
+      setTracking(res.data || []);
+    } catch (err) {
+      setTrackingError(err.response?.data?.detail || "Failed to load tracking");
+    } finally {
+      setTrackingLoading(false);
+    }
+  };
+
   useEffect(() => {
     Promise.all([refreshOps(), refreshPendingDrivers()])
       .catch((err) => console.log(err))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (active !== "Routes & Tracking") return;
+    refreshTracking();
+    const timer = setInterval(refreshTracking, 4000);
+    return () => clearInterval(timer);
+  }, [active]);
 
   const runAction = async (fn, successMsg) => {
     try {
@@ -390,12 +418,150 @@ export default function AdminDashboard() {
     </Panel>
   );
 
-  const renderRoutes = () => (
-    <div className="grid xl:grid-cols-3 gap-6">
-      <div className="xl:col-span-2"><Panel title="Routes & Tracking"><div className="h-[360px] rounded-xl bg-slate-100 flex items-center justify-center text-slate-500">Route map placeholder with geofencing events</div></Panel></div>
-      <Panel title="Route Detail Overlay"><ul className="space-y-2 text-sm text-slate-600"><li>Active Routes: {ops.routes.active}</li><li>On-time Performance: {ops.routes.on_time}%</li><li>Critical Delays: {ops.routes.critical_delays}</li>{(ops.routes.recent_events || []).map((e) => (<li key={e}>{e}</li>))}</ul></Panel>
-    </div>
-  );
+  const renderRoutes = () => {
+    const cards = [
+      { label: "Active Routes", value: ops.routes.active, tone: "bg-blue-50 text-blue-700", dot: "bg-blue-500" },
+      { label: "On-Time Performance", value: `${ops.routes.on_time}%`, tone: "bg-emerald-50 text-emerald-700", dot: "bg-emerald-500" },
+      { label: "Critical Delays", value: ops.routes.critical_delays, tone: "bg-rose-50 text-rose-700", dot: "bg-rose-500" },
+      { label: "Fleet Status", value: ops.routes.status_ok, tone: "bg-violet-50 text-violet-700", dot: "bg-violet-500" },
+    ];
+
+    const statusTone = (status) => {
+      if (status === "in_transit" || status === "started") return "bg-emerald-500";
+      if (status === "accepted") return "bg-blue-500";
+      if (status === "delivered" || status === "completed") return "bg-violet-500";
+      if (status === "cancelled") return "bg-rose-500";
+      return "bg-amber-500";
+    };
+
+    const trackingPoints = (tracking || [])
+      .filter((item) => typeof item.lat === "number" && typeof item.lng === "number")
+      .map((item) => ({
+        id: item.load_id || `LD-${String(item.ride_id || 0).padStart(6, "0")}`,
+        status: item.status || "active",
+        lat: item.lat,
+        lng: item.lng,
+        speed: item.speed_kmh,
+      }));
+
+    const bounds = trackingPoints.reduce(
+      (acc, item) => ({
+        minLat: Math.min(acc.minLat, item.lat),
+        maxLat: Math.max(acc.maxLat, item.lat),
+        minLng: Math.min(acc.minLng, item.lng),
+        maxLng: Math.max(acc.maxLng, item.lng),
+      }),
+      { minLat: 999, maxLat: -999, minLng: 999, maxLng: -999 }
+    );
+
+    const projectPoint = (lat, lng) => {
+      if (!trackingPoints.length || bounds.minLat === 999) {
+        return { x: "50%", y: "50%" };
+      }
+      const latSpan = bounds.maxLat - bounds.minLat || 0.01;
+      const lngSpan = bounds.maxLng - bounds.minLng || 0.01;
+      const x = ((lng - bounds.minLng) / lngSpan) * 100;
+      const y = (1 - (lat - bounds.minLat) / latSpan) * 100;
+      const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+      return { x: `${clamp(x, 5, 95)}%`, y: `${clamp(y, 5, 95)}%` };
+    };
+
+    return (
+      <div className="space-y-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-bold text-slate-800">Routes & Tracking</h2>
+            <p className="text-sm text-slate-500">Live visibility across active lanes</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button className="px-3 py-2 rounded-lg bg-slate-100 text-slate-600 text-sm">Export Data</button>
+            <button className="px-3 py-2 rounded-lg bg-blue-600 text-white text-sm">Route Optimization</button>
+          </div>
+        </div>
+
+        <div className="grid md:grid-cols-4 gap-4">
+          {cards.map((card) => (
+            <div key={card.label} className={`rounded-2xl border border-slate-200 p-4 ${card.tone}`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-2xl font-bold">{card.value}</p>
+                  <p className="text-xs text-slate-500 mt-1">{card.label}</p>
+                </div>
+                <div className={`h-10 w-10 rounded-full ${card.dot} flex items-center justify-center text-white text-xs`}>
+                  GO
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500">Route Status</span>
+            <select className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm">
+              <option>All Routes</option>
+              <option>Active</option>
+              <option>Delayed</option>
+              <option>Completed</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500">Time Range</span>
+            <select className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm">
+              <option>Today</option>
+              <option>Last 7 Days</option>
+              <option>Last 30 Days</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500">Driver</span>
+            <select className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm">
+              <option>All Drivers</option>
+              <option>Verified</option>
+              <option>Unverified</option>
+            </select>
+          </div>
+          <button className="text-xs text-slate-500 hover:text-slate-700">Clear Filters</button>
+        </div>
+
+        <div
+          className="relative h-[420px] rounded-2xl border border-slate-200 overflow-hidden"
+          style={{
+            backgroundImage:
+              "linear-gradient(0deg, rgba(226,232,240,0.6), rgba(226,232,240,0.6)), repeating-linear-gradient(120deg, rgba(148,163,184,0.25) 0, rgba(148,163,184,0.25) 2px, transparent 2px, transparent 40px), repeating-linear-gradient(60deg, rgba(148,163,184,0.2) 0, rgba(148,163,184,0.2) 1px, transparent 1px, transparent 30px)",
+            backgroundColor: "#f8fafc",
+          }}
+        >
+          <div className="absolute top-4 right-4 bg-white/90 rounded-xl px-3 py-2 text-xs text-slate-600 shadow">
+            {trackingLoading ? "Updating live feed..." : trackingError ? trackingError : "Live GPS feed connected"}
+          </div>
+          {!trackingLoading && trackingPoints.length === 0 && (
+            <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500">
+              No active routes to display.
+            </div>
+          )}
+          {trackingPoints.map((marker) => {
+            const pos = projectPoint(marker.lat, marker.lng);
+            return (
+              <div
+                key={marker.id}
+                className="absolute flex flex-col items-center"
+                style={{ left: pos.x, top: pos.y }}
+              >
+                <div className={`h-6 w-6 rounded-full ${statusTone(marker.status)} ring-4 ring-white flex items-center justify-center text-white text-[10px]`}>
+                  T
+                </div>
+                <div className="mt-1 text-[10px] font-semibold text-slate-600">{marker.id}</div>
+                {marker.speed ? (
+                  <div className="text-[9px] text-slate-400">{marker.speed} km/h</div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
 
   const renderWarehouses = () => (
     <Panel title="Warehouses / Hubs">
@@ -502,7 +668,7 @@ export default function AdminDashboard() {
               <p className="text-xs text-slate-500">Live operations, dispatch, fleet, compliance, and billing</p>
             </div>
             <div className="flex items-center gap-3">
-              <div className="text-sm text-slate-600">Sarah Johnson - Operations Manager</div>
+              <div className="text-sm text-slate-600">{currentUserLabel}</div>
               <button
                 onClick={handleLogout}
                 className="text-xs px-3 py-1.5 rounded-md bg-rose-600 text-white hover:bg-rose-700 transition"
@@ -514,7 +680,11 @@ export default function AdminDashboard() {
 
           <div className="flex min-h-[780px]">
             <aside className="w-64 bg-white border-r border-slate-200 p-4">
-              <p className="text-3xl font-bold text-blue-600 mb-6">FleetFlow</p>
+              <img
+                src="/transmaa-logo.svg"
+                alt="Transmaa"
+                className="h-14 w-auto mb-6"
+              />
               <nav className="space-y-1">
                 {navItems.map((item) => (
                   <button
@@ -535,3 +705,4 @@ export default function AdminDashboard() {
     </div>
   );
 }
+
