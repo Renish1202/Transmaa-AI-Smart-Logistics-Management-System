@@ -44,6 +44,10 @@ def startup_event():
 def root():
     return {"message": "Transmaa Backend Running"}
 
+@app.get("/healthz")
+def healthz():
+    return {"status": "ok"}
+
 
 @app.get("/protected")
 def protected(current_user: dict = Depends(get_current_user)):
