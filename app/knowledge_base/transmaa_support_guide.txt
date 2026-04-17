@@ -1,0 +1,196 @@
+Transmaa Support Knowledge Base (Extended)
+=========================================
+This document explains how the Transmaa app works, what users and drivers can do,
+and how to resolve common problems. Use this for support answers.
+
+1) Roles and Permissions
+------------------------
+- User: can request rides, view their rides, track assigned rides.
+- Driver: can register driver profile, view pending rides, accept rides, update ride status,
+  submit tracking updates, apply for finance, list vehicles in marketplace.
+- Admin: can verify drivers, view all users/drivers/rides, manage loads, invoices, POD,
+  and view operational dashboards.
+
+2) Account, Login, and Registration
+-----------------------------------
+- Register with email + password (+ optional phone).
+- Roles allowed for self signup: user and driver.
+- Admin registration is protected by an admin access code (ADMIN_REGISTRATION_CODE).
+  If the code is missing or wrong, admin registration is blocked.
+- Login requires correct email/password. If credentials are wrong, you will get 401.
+
+Common errors and fixes:
+- "Email already registered": use login or reset password.
+- "Phone already registered": use a different phone or remove it.
+- 401 Unauthorized: wrong email or password.
+- 403 Invalid role for self registration: only user/driver can self register.
+- 403 Invalid admin registration code: admin code missing or incorrect.
+
+3) Driver Registration and Verification
+---------------------------------------
+Drivers must submit:
+- DL number, PAN number, vehicle number, vehicle type, capacity in tons
+- Uploads: DL image, RC image, vehicle image
+
+Verification flow:
+- New driver registrations are "pending".
+- Admin must approve or reject.
+- If rejected, driver can re-register and status returns to pending.
+
+Common errors and fixes:
+- "Driver profile already exists": already registered, wait for admin approval.
+- "Driver not verified": admin must approve before driver can accept rides.
+- "Driver not registered": complete driver profile first.
+
+4) Rides (User and Driver)
+--------------------------
+Ride creation (user only):
+- Provide pickup location, drop location, and load weight.
+- Status flow: requested -> accepted -> started -> in_transit -> delivered -> completed
+- Cancellation allowed only when status is requested or accepted.
+
+Driver actions:
+- View pending rides (requested).
+- Accept ride if verified and capacity is enough.
+- Start ride (must be accepted first).
+- Mark in_transit (must be started first).
+- Deliver ride (must be in_transit).
+- Complete ride (driver or admin after delivered).
+
+Common errors and fixes:
+- "Only users can request rides": login with a user account.
+- "Only drivers can accept rides": login with a driver account.
+- "Driver profile not found": complete driver registration first.
+- "Driver not verified": wait for admin approval.
+- "Ride not found": ride id is wrong or not visible to you.
+- "Ride already taken": another driver already accepted it.
+- "Load exceeds truck capacity": choose a lighter load or different driver.
+- "Ride must be accepted first": accept before starting.
+- "Ride must be started first": start before in_transit.
+- "Ride not in transit": deliver only after in_transit.
+- "Ride not delivered yet": complete only after delivered.
+- "Cannot cancel at this stage": only requested/accepted can be cancelled.
+
+5) Tracking
+-----------
+- Drivers send heartbeat updates with ride_id, lat, lng, speed_kmh.
+- Admin can see active routes for accepted/started/in_transit.
+- Users/drivers can track a specific ride if it belongs to them.
+
+Common errors and fixes:
+- "Not assigned to this ride": only the assigned driver can update tracking.
+- "Not allowed": ride does not belong to the user/driver.
+- "Ride not found": check ride id.
+
+6) Admin Operations (Loads, POD, Invoices)
+------------------------------------------
+Loads:
+- Admin can create loads, assign drivers, update status, auto-assign, and plan routes.
+
+POD (Proof of Delivery):
+- Driver or admin can upload POD for a load.
+- Admin reviews and sets status approved/rejected.
+
+Invoices:
+- Admin can create invoices for loads.
+- Admin can update invoice status (pending, paid, overdue).
+
+Common errors and fixes:
+- "Load not found": wrong ride/load id.
+- "Driver not verified or missing profile": admin must assign only verified drivers.
+- "Invalid status": use allowed status values.
+- "POD not found": wrong pod id.
+
+7) Admin Knowledge Base (Detailed)
+----------------------------------
+Admin dashboard and control scope:
+- Admin-only endpoints require role=admin. If role is not admin, access is blocked.
+- Admin can view users, drivers, pending verifications, rides, stats, active tracking,
+  invoices, POD submissions, and operational overview.
+- Admin should verify drivers before assigning loads.
+- Admin can complete rides only after they are in delivered status.
+
+Driver verification playbook:
+- Open pending drivers list and check DL, PAN, vehicle details, and uploaded documents.
+- Approve only if profile details and documents are valid.
+- Reject if data is invalid, incomplete, or mismatched.
+- If rejected driver re-registers, status moves back to pending for re-review.
+
+Dispatch and load management playbook:
+- Create load with pickup, drop, and load weight.
+- Assign only verified drivers with enough capacity.
+- Use manual status changes only with valid flow control.
+- Suggested status path: requested -> accepted -> started -> in_transit -> delivered -> completed.
+- Use auto-assign when at least one requested load and one verified driver are available.
+
+Route planning playbook:
+- Plan route per load with distance_km and notes.
+- Add notes for known delays, traffic corridors, and special handling instructions.
+
+POD review playbook:
+- Drivers/admin upload POD for load.
+- Admin reviews POD and marks approved or rejected.
+- Reject POD if file is unreadable, incorrect load proof, or mismatched details.
+
+Invoice playbook:
+- Create invoice with load_id, amount, customer, due_date.
+- Keep invoice status in: pending, paid, overdue.
+- Use overdue for missed due_date follow-up and pending for open invoices.
+
+Admin error catalog and fixes:
+- "Admin access required": login with an admin account.
+- 403 on admin endpoints: token role is not admin or token expired.
+- "Driver not found": invalid driver id in verify action.
+- "Invalid status" on load update: status not in allowed set.
+- "No unassigned load found": no ride with requested status exists.
+- "No verified driver available": verify at least one driver first.
+- "Load not found": ride_id does not exist in rides collection.
+- "Invoice not found": invalid invoice id.
+- "POD not found": invalid pod id.
+
+Admin deployment and environment checks:
+- FRONTEND_BASE_URL must match production frontend origin exactly.
+- MONGODB_URL must be valid and should not contain unrelated env keys.
+- If CORS appears, verify FRONTEND_BASE_URL and redeploy backend.
+- If DB auth fails, reset Atlas password and update MONGODB_URL.
+- Health endpoint is /healthz for Render checks.
+
+Admin audit and safety notes:
+- Never share SECRET_KEY, ADMIN_REGISTRATION_CODE, or raw DB credentials.
+- Prefer approving drivers only after document verification.
+- For rejected cases, include clear reason for operational traceability.
+- For critical updates (status, invoice, POD), verify id before action.
+
+8) Finance and Marketplace
+--------------------------
+Finance:
+- Drivers can apply for finance/insurance.
+- Admin can approve/reject applications.
+
+Marketplace:
+- Drivers can list vehicles for sale.
+- Admin can approve/reject/sold listings.
+- Public can view approved listings.
+
+Common errors and fixes:
+- "Only drivers can apply/list": must be a driver.
+- "Only admin can update": must be admin to approve/reject.
+- "Not found": wrong application or listing id.
+
+9) Support Chat (RAG + Ollama)
+------------------------------
+- Support chat retrieves knowledge snippets from this knowledge base.
+- It uses Ollama to generate answers with those snippets.
+
+Common errors and fixes:
+- "Ollama server not reachable": Ollama not running or OLLAMA_BASE_URL not set.
+- "Ollama request timed out": increase timeout or reduce load.
+- If no relevant snippet exists, support should ask a clarifying question or
+  suggest contacting an admin.
+
+10) Helpful Tips
+---------------
+- Keep your login email and password correct (401 errors are usually credentials).
+- Drivers must be verified before accepting rides.
+- If you see "Not allowed", check your role or ride ownership.
+- For admin tasks, ensure you are logged in as admin.
