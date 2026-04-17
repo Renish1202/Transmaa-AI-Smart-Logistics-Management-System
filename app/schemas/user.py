@@ -6,6 +6,7 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
     role: Literal["user", "driver", "admin"] = "user"
+    admin_code: Optional[str] = None
 
 class UserLogin(BaseModel):
     

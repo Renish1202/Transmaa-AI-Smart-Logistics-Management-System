@@ -17,6 +17,7 @@ from app.config import (
     RESET_TOKEN_EXPIRE_MINUTES,
     RESET_TOKEN_DEBUG,
     FRONTEND_BASE_URL,
+    ADMIN_REGISTRATION_CODE,
 )
 
 router = APIRouter(
@@ -38,7 +39,12 @@ def register(user: UserCreate):
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    if user.role not in ALLOWED_SELF_SIGNUP_ROLES:
+    if user.role == "admin":
+        if not ADMIN_REGISTRATION_CODE:
+            raise HTTPException(status_code=403, detail="Admin registration is disabled")
+        if not user.admin_code or user.admin_code != ADMIN_REGISTRATION_CODE:
+            raise HTTPException(status_code=403, detail="Invalid admin registration code")
+    elif user.role not in ALLOWED_SELF_SIGNUP_ROLES:
         raise HTTPException(status_code=400, detail="Invalid role for self registration")
 
     if normalized_phone:

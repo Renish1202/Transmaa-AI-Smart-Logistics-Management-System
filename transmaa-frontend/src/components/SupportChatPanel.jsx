@@ -7,27 +7,23 @@ export default function SupportChatPanel({ height = "70vh" }) {
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [pendingAction, setPendingAction] = useState(null);
 
-  const sendToAgent = async (text, opts = {}) => {
+  const sendToSupport = async (text) => {
     const newMessages = [...messages, { role: "user", content: text }];
     setMessages(newMessages);
     setInput("");
     setLoading(true);
 
     try {
-      const response = await API.post("/ai/agent", {
+      const response = await API.post("/ai/support", {
         message: text,
         history: newMessages
           .filter((msg) => msg.role !== "system")
-          .slice(-10),
-        pending_action: opts.pendingAction || null,
-        confirm: typeof opts.confirm === "boolean" ? opts.confirm : null,
+          .slice(-8),
       });
 
       const reply = response.data?.reply || "Sorry, I didn't get that.";
       setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
-      setPendingAction(response.data?.pending_action || null);
     } catch (error) {
       console.log(error.response?.data);
       setMessages((prev) => [
@@ -43,26 +39,7 @@ export default function SupportChatPanel({ height = "70vh" }) {
     e.preventDefault();
     const trimmed = input.trim();
     if (!trimmed || loading) return;
-
-    if (pendingAction) {
-      const normalized = trimmed.toLowerCase();
-      if (["yes", "y", "confirm", "ok", "okay"].includes(normalized)) {
-        await sendToAgent(trimmed, { pendingAction, confirm: true });
-        return;
-      }
-      if (["no", "n", "cancel", "stop"].includes(normalized)) {
-        await sendToAgent(trimmed, { pendingAction, confirm: false });
-        return;
-      }
-    }
-
-    await sendToAgent(trimmed);
-  };
-
-  const confirmPending = async (confirm) => {
-    if (!pendingAction || loading) return;
-    const text = confirm ? "yes" : "no";
-    await sendToAgent(text, { pendingAction, confirm });
+    await sendToSupport(trimmed);
   };
 
   return (
@@ -104,7 +81,7 @@ export default function SupportChatPanel({ height = "70vh" }) {
         <input
           type="text"
           className="flex-1 border rounded p-3"
-          placeholder="Type your message"
+          placeholder="Ask about the app, rides, or policies"
           value={input}
           onChange={(e) => setInput(e.target.value)}
         />
@@ -116,27 +93,6 @@ export default function SupportChatPanel({ height = "70vh" }) {
           Send
         </button>
       </form>
-
-      {pendingAction ? (
-        <div className="mt-3 flex gap-2">
-          <button
-            type="button"
-            onClick={() => confirmPending(true)}
-            className="px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700 disabled:opacity-60"
-            disabled={loading}
-          >
-            Confirm
-          </button>
-          <button
-            type="button"
-            onClick={() => confirmPending(false)}
-            className="px-4 py-2 bg-rose-600 text-white rounded hover:bg-rose-700 disabled:opacity-60"
-            disabled={loading}
-          >
-            Cancel
-          </button>
-        </div>
-      ) : null}
     </div>
   );
 }

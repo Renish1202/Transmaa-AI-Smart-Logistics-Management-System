@@ -9,7 +9,8 @@ function Register() {
     email: "",
     password: "",
     phone: "",
-    role: "user"
+    role: "user",
+    admin_code: ""
   });
 
   const handleChange = (e) => {
@@ -23,6 +24,7 @@ function Register() {
       ...form,
       email: form.email.trim().toLowerCase(),
       phone: form.phone?.trim() || "",
+      admin_code: form.role === "admin" ? form.admin_code.trim() : undefined,
     };
 
     try {
@@ -125,7 +127,19 @@ function Register() {
         >
           <option value="user">User</option>
           <option value="driver">Driver</option>
+          <option value="admin">Admin</option>
         </select>
+
+        {form.role === "admin" && (
+          <input
+            name="admin_code"
+            type="password"
+            placeholder="Admin access code"
+            onChange={handleChange}
+            className="w-full mb-3 p-2 border rounded"
+            required
+          />
+        )}
 
         <button className="w-full bg-blue-500 text-white p-2 rounded">
           Register
