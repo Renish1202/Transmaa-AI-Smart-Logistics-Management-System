@@ -136,9 +136,22 @@ def support_chat(
         )
     except httpx.HTTPStatusError as exc:
         print(f"Ollama HTTP error: {exc}")
+        ollama_detail = ""
+        try:
+            body = exc.response.json()
+            if isinstance(body, dict):
+                ollama_detail = str(body.get("error") or body.get("message") or "").strip()
+        except ValueError:
+            pass
+        if not ollama_detail:
+            ollama_detail = (exc.response.text or "").strip()
+        if ollama_detail:
+            detail = f"Ollama error ({exc.response.status_code}): {ollama_detail}"
+        else:
+            detail = f"Ollama returned HTTP {exc.response.status_code}."
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Ollama returned an error.",
+            detail=detail,
         )
 
     reply = data.get("message", {}).get("content")

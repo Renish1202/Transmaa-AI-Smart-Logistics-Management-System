@@ -25,10 +25,15 @@ export default function SupportChatPanel({ height = "70vh" }) {
       const reply = response.data?.reply || "Sorry, I didn't get that.";
       setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
     } catch (error) {
-      console.log(error.response?.data);
+      const backendDetail = error.response?.data?.detail;
+      const message =
+        typeof backendDetail === "string" && backendDetail.trim()
+          ? `Support is unavailable: ${backendDetail}`
+          : "Support is temporarily unavailable. Please try again.";
+      console.log(error.response?.data || error.message);
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: "Support is temporarily unavailable. Please try again." },
+        { role: "assistant", content: message },
       ]);
     } finally {
       setLoading(false);

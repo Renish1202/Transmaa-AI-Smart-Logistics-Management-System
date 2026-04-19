@@ -190,7 +190,23 @@ export default function AdminDashboard() {
   };
 
   const autoAssign = () => runAction(() => API.post("/admin/ops/loads/auto-assign"), "Auto-assign completed");
-  const updateLoadStatus = (rideId, status) => runAction(() => API.put(`/admin/ops/loads/${rideId}/status`, { status }), "Load status updated");
+  const parseRideId = (row) => {
+    const direct = Number(row?.ride_id);
+    if (Number.isFinite(direct) && direct > 0) return direct;
+
+    const match = String(row?.id || "").match(/LD-(\d+)/i);
+    const parsed = Number(match?.[1]);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+
+    return null;
+  };
+  const updateLoadStatus = (rideId, status) => {
+    if (!Number.isFinite(Number(rideId)) || Number(rideId) <= 0) {
+      alert("Ride ID is unavailable for this load. Create a real load first.");
+      return;
+    }
+    runAction(() => API.put(`/admin/ops/loads/${rideId}/status`, { status }), "Load status updated");
+  };
   const reviewPod = (podId, status) => runAction(() => API.put(`/admin/ops/pod/${podId}/review`, { status }), `POD ${status}`);
   const updateInvoiceStatus = (invoiceId, status) => runAction(() => API.put(`/admin/ops/invoices/${invoiceId}/status`, { status }), "Invoice updated");
   const reviewDriver = (driverId, status) =>
@@ -292,21 +308,25 @@ export default function AdminDashboard() {
             </tr>
           </thead>
           <tbody>
-            {ops.loads.map((row) => (
-              <tr key={row.id} className="border-b border-slate-100">
-                <td className="py-3 font-semibold text-blue-700">{row.id}</td>
-                <td>{row.customer}</td>
-                <td>{row.route}</td>
-                <td>{row.eta}</td>
-                <td><Badge status={row.status} /></td>
-                <td className="font-semibold text-emerald-700">{row.margin}%</td>
-                <td className="space-x-1">
-                  <button className="px-2 py-1 text-xs bg-slate-100 rounded" onClick={() => updateLoadStatus(row.ride_id, "loading")}>Loading</button>
-                  <button className="px-2 py-1 text-xs bg-slate-100 rounded" onClick={() => updateLoadStatus(row.ride_id, "in_transit")}>Transit</button>
-                  <button className="px-2 py-1 text-xs bg-slate-100 rounded" onClick={() => updateLoadStatus(row.ride_id, "delivered")}>Delivered</button>
-                </td>
-              </tr>
-            ))}
+            {ops.loads.map((row) => {
+              const rideId = parseRideId(row);
+              const actionsDisabled = !rideId;
+              return (
+                <tr key={row.id} className="border-b border-slate-100">
+                  <td className="py-3 font-semibold text-blue-700">{row.id}</td>
+                  <td>{row.customer}</td>
+                  <td>{row.route}</td>
+                  <td>{row.eta}</td>
+                  <td><Badge status={row.status} /></td>
+                  <td className="font-semibold text-emerald-700">{row.margin}%</td>
+                  <td className="space-x-1">
+                    <button className="px-2 py-1 text-xs bg-slate-100 rounded disabled:opacity-50" disabled={actionsDisabled} onClick={() => updateLoadStatus(rideId, "loading")}>Loading</button>
+                    <button className="px-2 py-1 text-xs bg-slate-100 rounded disabled:opacity-50" disabled={actionsDisabled} onClick={() => updateLoadStatus(rideId, "in_transit")}>Transit</button>
+                    <button className="px-2 py-1 text-xs bg-slate-100 rounded disabled:opacity-50" disabled={actionsDisabled} onClick={() => updateLoadStatus(rideId, "delivered")}>Delivered</button>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
