@@ -50,8 +50,10 @@ class RoutePlanRequest(BaseModel):
 class InvoiceCreateRequest(BaseModel):
     load_id: int
     customer: Optional[str] = ""
+    customer_email: Optional[str] = None
     amount: float
     due_date: Optional[str] = ""
+    currency: Optional[str] = "INR"
 
 
 def _save_upload(file: UploadFile, prefix: str) -> str:
@@ -314,15 +316,49 @@ def plan_route(ride_id: int, payload: RoutePlanRequest, current_user: dict = Dep
 
 @router.post("/invoices/create")
 def create_invoice(payload: InvoiceCreateRequest, current_user: dict = Depends(require_admin)):
+    if payload.amount <= 0:
+        raise HTTPException(status_code=400, detail="Invoice amount must be greater than zero")
+
+    ride = serialize_doc(rides_collection.find_one({"id": payload.load_id}))
+    if not ride:
+        raise HTTPException(status_code=404, detail="Load not found")
+
+    customer_id = ride.get("passenger_id")
+    customer_email = None
+
+    if customer_id:
+        customer_user = serialize_doc(users_collection.find_one({"id": customer_id}))
+        if customer_user:
+            customer_email = customer_user.get("email")
+
+    if payload.customer_email:
+        override_email = payload.customer_email.lower()
+        override_user = serialize_doc(users_collection.find_one({"email": override_email}))
+        if not override_user:
+            raise HTTPException(status_code=404, detail="Customer email not found")
+        customer_id = override_user.get("id")
+        customer_email = override_user.get("email")
+
+    display_customer = payload.customer or customer_email or "Customer"
+
     invoice = {
         "id": get_next_sequence("invoices"),
         "load_id": payload.load_id,
-        "customer": payload.customer,
+        "customer": display_customer,
+        "customer_id": customer_id,
+        "customer_email": customer_email,
         "amount": payload.amount,
+        "amount_paid": 0,
+        "balance_amount": payload.amount,
+        "currency": (payload.currency or "INR").upper(),
         "due_date": payload.due_date,
         "status": "pending",
+        "payment_status": "pending",
+        "payment_id": None,
+        "razorpay_order_id": None,
         "created_by": current_user.get("id"),
         "created_at": utc_now(),
+        "updated_at": utc_now(),
     }
     invoices_collection.insert_one(invoice)
     return {"message": "Invoice created", "invoice_id": invoice["id"]}
@@ -334,7 +370,17 @@ def update_invoice_status(invoice_id: int, payload: StatusUpdateRequest, current
     if payload.status not in allowed:
         raise HTTPException(status_code=400, detail="Invalid invoice status")
 
-    result = invoices_collection.update_one({"id": invoice_id}, {"$set": {"status": payload.status}})
+    invoice = serialize_doc(invoices_collection.find_one({"id": invoice_id}))
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    updates = {"status": payload.status, "payment_status": payload.status, "updated_at": utc_now()}
+    if payload.status == "paid":
+        updates["amount_paid"] = float(invoice.get("amount") or 0)
+        updates["balance_amount"] = 0
+        updates["paid_at"] = utc_now()
+
+    result = invoices_collection.update_one({"id": invoice_id}, {"$set": updates})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Invoice not found")
 

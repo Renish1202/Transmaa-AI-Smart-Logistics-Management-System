@@ -16,6 +16,7 @@ shipments_collection = mongo_db["shipments"]
 finance_collection = mongo_db["finance_applications"]
 marketplace_collection = mongo_db["vehicle_listings"]
 invoices_collection = mongo_db["invoices"]
+payments_collection = mongo_db["payments"]
 pod_collection = mongo_db["pod_documents"]
 route_plans_collection = mongo_db["route_plans"]
 tracking_collection = mongo_db["tracking"]
@@ -67,6 +68,14 @@ def ensure_indexes():
     marketplace_collection.create_index([("id", ASCENDING)], unique=True)
     invoices_collection.create_index([("id", ASCENDING)], unique=True)
     invoices_collection.create_index([("load_id", ASCENDING)])
+    invoices_collection.create_index([("customer_id", ASCENDING)])
+    invoices_collection.create_index([("customer_email", ASCENDING)])
+    invoices_collection.create_index([("status", ASCENDING)])
+    payments_collection.create_index([("id", ASCENDING)], unique=True)
+    payments_collection.create_index([("invoice_id", ASCENDING)])
+    payments_collection.create_index([("user_id", ASCENDING)])
+    payments_collection.create_index([("order_id", ASCENDING)], unique=True)
+    payments_collection.create_index([("payment_id", ASCENDING)], unique=True, sparse=True)
     pod_collection.create_index([("id", ASCENDING)], unique=True)
     pod_collection.create_index([("load_id", ASCENDING)])
     route_plans_collection.create_index([("id", ASCENDING)], unique=True)

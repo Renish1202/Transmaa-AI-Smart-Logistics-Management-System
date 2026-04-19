@@ -30,3 +30,11 @@ RAG_CHUNK_SIZE = int(os.getenv("RAG_CHUNK_SIZE", "900"))
 RAG_CHUNK_OVERLAP = int(os.getenv("RAG_CHUNK_OVERLAP", "150"))
 RAG_MIN_SCORE = float(os.getenv("RAG_MIN_SCORE", "0.2"))
 RAG_FORCE_REINDEX = os.getenv("RAG_FORCE_REINDEX", "false").lower() == "true"
+
+PAYMENT_PROVIDER = os.getenv("PAYMENT_PROVIDER", "razorpay")
+PAYMENT_CURRENCY = os.getenv("PAYMENT_CURRENCY", "INR")
+PAYMENT_SIMULATION_ENABLED = os.getenv("PAYMENT_SIMULATION_ENABLED", "true").lower() == "true"
+
+RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "")
+RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "")
+RAZORPAY_WEBHOOK_SECRET = os.getenv("RAZORPAY_WEBHOOK_SECRET", "")

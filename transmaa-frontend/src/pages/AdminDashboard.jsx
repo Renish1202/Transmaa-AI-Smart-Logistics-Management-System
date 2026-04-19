@@ -183,10 +183,15 @@ export default function AdminDashboard() {
   const generateInvoice = () => {
     const rideId = Number(prompt("Ride ID (numeric):", ""));
     const customer = prompt("Customer:", "") || "";
+    const customerEmail = prompt("Customer email (optional, enables user-side payment):", "") || "";
     const amount = Number(prompt("Amount:", "1000"));
     const dueDate = prompt("Due date (YYYY-MM-DD):", "") || "";
+    const currency = prompt("Currency (default INR):", "INR") || "INR";
     if (!rideId || !amount) return;
-    runAction(() => API.post("/admin/ops/invoices/create", { load_id: rideId, customer, amount, due_date: dueDate }), "Invoice generated");
+    runAction(
+      () => API.post("/admin/ops/invoices/create", { load_id: rideId, customer, customer_email: customerEmail || null, amount, due_date: dueDate, currency }),
+      "Invoice generated"
+    );
   };
 
   const autoAssign = () => runAction(() => API.post("/admin/ops/loads/auto-assign"), "Auto-assign completed");
@@ -630,7 +635,10 @@ export default function AdminDashboard() {
       <div className="space-y-2">
         {(ops.billing.items || []).slice(0, 10).map((inv) => (
           <div key={inv.id} className="border border-slate-200 rounded-lg p-2 flex items-center justify-between">
-            <div className="text-sm">INV-{inv.id} Load {inv.load_id} Amount {inv.amount}</div>
+            <div className="text-sm">
+              INV-{inv.id} Load {inv.load_id} Amount {inv.amount} {inv.currency || "INR"}
+              {inv.customer_email ? ` | ${inv.customer_email}` : ""}
+            </div>
             <div className="flex items-center gap-2">
               <Badge status={inv.status} />
               <button className="text-xs px-2 py-1 bg-emerald-100 rounded" onClick={() => updateInvoiceStatus(inv.id, "paid")}>Mark Paid</button>

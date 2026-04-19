@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.core.security import get_current_user, require_admin
 from app.mongodb import ensure_indexes
-from app.routes import admin, admin_ops, auth, drivers, finance, marketplace, rides, trips, tracking
+from app.routes import admin, admin_ops, auth, drivers, finance, marketplace, payments, rides, trips, tracking
 from app.routes import ai_support, ai_agent
 from app.config import FRONTEND_BASE_URL
 
@@ -19,6 +19,7 @@ app.include_router(admin.router)
 app.include_router(admin_ops.router)
 app.include_router(trips.router)
 app.include_router(finance.router)
+app.include_router(payments.router)
 app.include_router(marketplace.router)
 app.include_router(tracking.router)
 app.add_middleware(
