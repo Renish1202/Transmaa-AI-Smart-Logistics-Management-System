@@ -102,7 +102,7 @@ export default function ResetPassword() {
         ) : null}
 
         <div className="mt-6">
-          <Link to="/" className="text-blue-600 hover:underline">
+          <Link to="/login" className="text-blue-600 hover:underline">
             Back to Login
           </Link>
         </div>

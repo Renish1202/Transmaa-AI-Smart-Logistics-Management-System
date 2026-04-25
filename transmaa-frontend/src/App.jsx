@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Dashboard from "./pages/Dashboard";
+import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import DriverRegister from "./pages/DriverRegister";
@@ -9,6 +10,8 @@ import SupportChat from "./pages/SupportChat";
 import UserDashboard from "./pages/UserDashboard";
 import DriverDashboard from "./pages/DriverDashboard";
 import AdminDashboard from "./pages/AdminDashboard";
+import UserPaymentHistory from "./pages/UserPaymentHistory";
+import DriverPaymentHistory from "./pages/DriverPaymentHistory";
 
 import PrivateRoute from "./components/PrivateRoute";
 
@@ -16,7 +19,8 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Login />} />
+        <Route path="/" element={<Home />} />
+        <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
@@ -59,6 +63,23 @@ function App() {
           element={
             <PrivateRoute allowedRoles={["driver"]}>
               <DriverDashboard />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/driver/payments"
+          element={
+            <PrivateRoute allowedRoles={["driver"]}>
+              <DriverPaymentHistory />
+            </PrivateRoute>
+          }
+        />
+
+        <Route
+          path="/user/payments"
+          element={
+            <PrivateRoute allowedRoles={["user"]}>
+              <UserPaymentHistory />
             </PrivateRoute>
           }
         />

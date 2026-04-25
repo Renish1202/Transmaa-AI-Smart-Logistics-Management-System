@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from datetime import timedelta, timezone
 import hashlib
+import re
 import secrets
 from app.core.security import hash_password, verify_password, create_access_token
 from app.mongodb import get_next_sequence, serialize_doc, users_collection, utc_now
@@ -76,7 +77,18 @@ def register(user: UserCreate):
 def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
 ):
-    user = serialize_doc(users_collection.find_one({"email": form_data.username.lower()}))
+    username = (form_data.username or "").strip()
+    normalized_email = username.lower()
+    user = None
+    if normalized_email:
+        user = serialize_doc(users_collection.find_one({"email": normalized_email}))
+
+    # Backward-compatible lookup for legacy records that may have mixed-case or padded emails.
+    if not user and username:
+        legacy_email_pattern = rf"^\s*{re.escape(username)}\s*$"
+        user = serialize_doc(
+            users_collection.find_one({"email": {"$regex": legacy_email_pattern, "$options": "i"}})
+        )
 
     if not user or not verify_password(form_data.password, user["password"]):
         raise HTTPException(

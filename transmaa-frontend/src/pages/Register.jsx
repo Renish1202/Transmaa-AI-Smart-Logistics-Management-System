@@ -80,7 +80,7 @@ function Register() {
       } else {
         alert("Registered, but login failed. Please login manually.");
       }
-      navigate("/");
+      navigate("/login");
     }
   };
 
@@ -147,7 +147,7 @@ function Register() {
 
         <p className="mt-4 text-center">
           Already have account?{" "}
-          <Link to="/" className="text-blue-500">
+          <Link to="/login" className="text-blue-500">
             Login
           </Link>
         </p>

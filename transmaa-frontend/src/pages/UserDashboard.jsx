@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import Layout from "../components/Layout";
+import LiveTrackingMap from "../components/LiveTrackingMap";
 import API from "../services/api";
+
+const TRACKING_ACTIVE_STATUSES = new Set(["started", "in_transit", "delivered"]);
 
 const GOODS_TYPES = [
   "Timber/Plywood/Laminate",
@@ -23,6 +26,11 @@ const TRUCK_TYPES = [
   "Container Truck",
   "Trailer Truck",
   "Open Body Truck",
+];
+
+const PAYMENT_METHODS = [
+  { value: "cash", label: "Cash" },
+  { value: "online", label: "Online" },
 ];
 
 const getTodayDateString = () => {
@@ -57,6 +65,8 @@ const loadRazorpayScript = () =>
 
 export default function UserDashboard() {
   const todayDate = getTodayDateString();
+  const [userId, setUserId] = useState(null);
+  const userEmail = localStorage.getItem("email") || "N/A";
   const [pickup, setPickup] = useState("");
   const [drop, setDrop] = useState("");
   const [weight, setWeight] = useState("");
@@ -64,6 +74,7 @@ export default function UserDashboard() {
   const [shiftingTime, setShiftingTime] = useState("");
   const [goodsType, setGoodsType] = useState("");
   const [truckType, setTruckType] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("cash");
   const [activeLocationField, setActiveLocationField] = useState(null);
   const [pickupSuggestions, setPickupSuggestions] = useState([]);
   const [dropSuggestions, setDropSuggestions] = useState([]);
@@ -76,6 +87,32 @@ export default function UserDashboard() {
   const [invoices, setInvoices] = useState([]);
   const [paymentConfig, setPaymentConfig] = useState({ enabled: false, simulation_enabled: false, provider: "razorpay" });
   const [payingInvoiceId, setPayingInvoiceId] = useState(null);
+  const [trackingByRide, setTrackingByRide] = useState({});
+  const activeTrackingRideIds = rides
+    .filter((ride) => TRACKING_ACTIVE_STATUSES.has(ride.status))
+    .map((ride) => ride.id);
+  const liveMapPoints = rides
+    .filter((ride) => TRACKING_ACTIVE_STATUSES.has(ride.status))
+    .map((ride) => {
+      const tracking = trackingByRide[ride.id];
+      return {
+        ride_id: ride.id,
+        label: `Ride #${ride.id}`,
+        subtitle: `${ride.pickup_location} \u2192 ${ride.drop_location}`,
+        start_lat: ride.pickup_lat,
+        start_lng: ride.pickup_lng,
+        end_lat: ride.drop_lat,
+        end_lng: ride.drop_lng,
+        lat: tracking?.lat,
+        lng: tracking?.lng,
+        speed_kmh: tracking?.speed_kmh,
+        accuracy_m: tracking?.accuracy_m,
+        updated_at: tracking?.updated_at,
+        path: tracking?.path || [],
+        route_path: Array.isArray(ride.route_path) ? ride.route_path : [],
+        status: ride.status,
+      };
+    });
 
   const loadMyRides = () => {
     API.get("/rides/my").then((res) => setRides(res.data)).catch(() => setRides([]));
@@ -91,11 +128,73 @@ export default function UserDashboard() {
       .catch(() => setPaymentConfig({ enabled: false, simulation_enabled: false, provider: "razorpay" }));
   };
 
+  const formatTimestamp = (value) => {
+    if (!value) return "N/A";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return "N/A";
+    return parsed.toLocaleString();
+  };
+
   useEffect(() => {
     loadMyRides();
     loadMyInvoices();
     loadPaymentConfig();
+
+    const token = localStorage.getItem("token");
+    if (token) {
+      try {
+        const payload = JSON.parse(atob(token.split(".")[1]));
+        setUserId(payload.user_id ?? null);
+      } catch {
+        setUserId(null);
+      }
+    } else {
+      setUserId(null);
+    }
+
+    const refreshTimer = setInterval(loadMyRides, 10000);
+    return () => clearInterval(refreshTimer);
   }, []);
+
+  useEffect(() => {
+    if (activeTrackingRideIds.length === 0) {
+      setTrackingByRide({});
+      return;
+    }
+
+    let cancelled = false;
+
+    const fetchTracking = async () => {
+      const trackingEntries = await Promise.all(
+        activeTrackingRideIds.map(async (rideId) => {
+          try {
+            const res = await API.get(`/tracking/ride/${rideId}`);
+            return [rideId, res.data];
+          } catch {
+            return [rideId, null];
+          }
+        })
+      );
+
+      if (cancelled) return;
+
+      const nextTracking = {};
+      trackingEntries.forEach(([rideId, payload]) => {
+        if (payload && payload.status !== "no_tracking") {
+          nextTracking[rideId] = payload;
+        }
+      });
+      setTrackingByRide(nextTracking);
+    };
+
+    fetchTracking();
+    const timer = setInterval(fetchTracking, 5000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [activeTrackingRideIds.join(",")]);
 
   useEffect(() => {
     const text = pickup.trim();
@@ -207,6 +306,7 @@ export default function UserDashboard() {
         shifting_time: shiftingTime,
         goods_type: goodsType,
         truck_type: truckType,
+        payment_method: paymentMethod,
       });
 
       setPickup("");
@@ -216,6 +316,7 @@ export default function UserDashboard() {
       setShiftingTime("");
       setGoodsType("");
       setTruckType("");
+      setPaymentMethod("cash");
       setPickupSuggestions([]);
       setDropSuggestions([]);
       setActiveLocationField(null);
@@ -318,7 +419,17 @@ export default function UserDashboard() {
 
   return (
     <Layout>
-      <h1 className="text-3xl font-bold mb-6">Book Ride</h1>
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between mb-6">
+        <h1 className="text-3xl font-bold">User Dashboard</h1>
+        <div className="rounded-lg border bg-slate-50 px-4 py-3 text-sm text-slate-700 md:text-right">
+          <p>
+            <span className="font-semibold">User ID:</span> {userId ?? "N/A"}
+          </p>
+          <p className="break-all">
+            <span className="font-semibold">Email:</span> {userEmail}
+          </p>
+        </div>
+      </div>
 
       <form onSubmit={handleSubmit} className="space-y-4 mb-8">
         <div className="relative">
@@ -452,6 +563,24 @@ export default function UserDashboard() {
           ))}
         </select>
 
+        <div className="rounded border p-3">
+          <p className="text-sm font-semibold text-slate-700 mb-2">Payment Method</p>
+          <div className="flex flex-wrap gap-4">
+            {PAYMENT_METHODS.map((method) => (
+              <label key={method.value} className="inline-flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="radio"
+                  name="payment_method"
+                  value={method.value}
+                  checked={paymentMethod === method.value}
+                  onChange={(e) => setPaymentMethod(e.target.value)}
+                />
+                <span>{method.label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
         {quoteLoading && <p className="text-sm text-slate-500">Calculating fare based on distance...</p>}
 
         {!quoteLoading && quote && (
@@ -471,6 +600,13 @@ export default function UserDashboard() {
           Request Ride
         </button>
       </form>
+
+      {activeTrackingRideIds.length > 0 && (
+        <div className="mb-8">
+          <h2 className="text-2xl font-semibold mb-4">Live Load Map</h2>
+          <LiveTrackingMap points={liveMapPoints} heightClass="h-[520px]" />
+        </div>
+      )}
 
       <h2 className="text-2xl font-semibold mb-4">My Rides</h2>
       <div className="space-y-3">
@@ -496,6 +632,11 @@ export default function UserDashboard() {
                 {ride.truck_type && (
                   <p className="text-sm text-gray-500">Truck Type: {ride.truck_type}</p>
                 )}
+                {ride.payment_method && (
+                  <p className="text-sm text-gray-500">
+                    Payment Method: {String(ride.payment_method).toUpperCase()}
+                  </p>
+                )}
                 {ride.distance_km != null && (
                   <p className="text-sm text-gray-500">Distance: {Number(ride.distance_km).toFixed(2)} km</p>
                 )}
@@ -503,6 +644,24 @@ export default function UserDashboard() {
                   <p className="text-sm font-semibold text-gray-700">
                     Price: {formatAmount(ride.price, ride.price_currency || "INR")}
                   </p>
+                )}
+                {TRACKING_ACTIVE_STATUSES.has(ride.status) && (
+                  <div className="mt-2 rounded border bg-slate-50 px-3 py-2 text-xs text-slate-700 space-y-1">
+                    <p className="font-semibold text-slate-800">Live Tracking</p>
+                    {trackingByRide[ride.id] ? (
+                      <>
+                        <p>
+                          Current Location: {Number(trackingByRide[ride.id].lat).toFixed(6)},{" "}
+                          {Number(trackingByRide[ride.id].lng).toFixed(6)}
+                        </p>
+                        <p>Speed: {trackingByRide[ride.id].speed_kmh ?? 0} km/h</p>
+                        <p>Accuracy: {trackingByRide[ride.id].accuracy_m ?? "N/A"} m</p>
+                        <p>Last Updated: {formatTimestamp(trackingByRide[ride.id].updated_at)}</p>
+                      </>
+                    ) : (
+                      <p>Waiting for driver GPS updates...</p>
+                    )}
+                  </div>
                 )}
               </div>
               {(ride.status === "requested" || ride.status === "accepted") && (

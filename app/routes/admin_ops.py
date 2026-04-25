@@ -20,6 +20,7 @@ from app.mongodb import (
     users_collection,
     utc_now,
 )
+from app.services.ride_payments import record_ride_completion_payment
 
 router = APIRouter(prefix="/admin/ops", tags=["Admin Operations"])
 UPLOAD_DIR = "uploads"
@@ -241,6 +242,7 @@ def create_load(payload: CreateLoadRequest, current_user: dict = Depends(require
         "eta": payload.eta,
         "priority": payload.priority,
         "price": None,
+        "payment_method": "cash",
         "status": "requested",
         "created_at": utc_now(),
     }
@@ -271,9 +273,17 @@ def update_load_status(ride_id: int, payload: StatusUpdateRequest, current_user:
     if payload.status not in allowed:
         raise HTTPException(status_code=400, detail="Invalid status")
 
+    ride = serialize_doc(rides_collection.find_one({"id": ride_id}))
+    if not ride:
+        raise HTTPException(status_code=404, detail="Load not found")
+
     result = rides_collection.update_one({"id": ride_id}, {"$set": {"status": payload.status}})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Load not found")
+
+    if payload.status == "completed":
+        ride["status"] = "completed"
+        record_ride_completion_payment(ride)
 
     return {"message": "Load status updated", "ride_id": ride_id, "status": payload.status}
 

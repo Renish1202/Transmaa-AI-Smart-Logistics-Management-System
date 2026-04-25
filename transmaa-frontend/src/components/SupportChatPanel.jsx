@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import API from "../services/api";
 
 export default function SupportChatPanel({ height = "70vh" }) {
@@ -7,6 +7,13 @@ export default function SupportChatPanel({ height = "70vh" }) {
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const scrollContainerRef = useRef(null);
+
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    container.scrollTop = container.scrollHeight;
+  }, [messages, loading]);
 
   const sendToSupport = async (text) => {
     const newMessages = [...messages, { role: "user", content: text }];
@@ -54,7 +61,10 @@ export default function SupportChatPanel({ height = "70vh" }) {
         <p className="text-sm text-gray-500">Ask anything about your account, rides, or payments.</p>
       </div>
 
-      <div className="flex-1 overflow-y-auto space-y-3 p-4 border rounded bg-gray-50">
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto space-y-3 p-4 border rounded bg-gray-50"
+      >
         {messages.map((msg, idx) => (
           <div
             key={idx}
@@ -77,7 +87,25 @@ export default function SupportChatPanel({ height = "70vh" }) {
         ))}
         {loading && (
           <div className="flex justify-start">
-            <div className="bg-white text-gray-500 px-4 py-2 rounded-lg border">Typing...</div>
+            <div className="bg-white text-gray-600 px-4 py-2 rounded-lg border max-w-[80%]" aria-live="polite">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">Support is typing</span>
+                <span className="inline-flex items-center gap-1">
+                  <span
+                    className="h-1.5 w-1.5 rounded-full bg-slate-500 animate-bounce"
+                    style={{ animationDelay: "0ms" }}
+                  />
+                  <span
+                    className="h-1.5 w-1.5 rounded-full bg-slate-500 animate-bounce"
+                    style={{ animationDelay: "120ms" }}
+                  />
+                  <span
+                    className="h-1.5 w-1.5 rounded-full bg-slate-500 animate-bounce"
+                    style={{ animationDelay: "240ms" }}
+                  />
+                </span>
+              </div>
+            </div>
           </div>
         )}
       </div>

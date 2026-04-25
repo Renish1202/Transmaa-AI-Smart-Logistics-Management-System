@@ -7,7 +7,7 @@ export default function Layout({ children }) {
   const handleLogout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("role");
-    navigate("/");
+    navigate("/login");
   };
 
   return (
@@ -53,6 +53,12 @@ export default function Layout({ children }) {
                 My Rides
               </button>
               <button
+                onClick={() => navigate("/driver/payments")}
+                className="block w-full text-left hover:bg-blue-600 p-2 rounded"
+              >
+                Payment History
+              </button>
+              <button
                 onClick={() => navigate("/verify-driver")}
                 className="block w-full text-left hover:bg-blue-600 p-2 rounded"
               >
@@ -68,6 +74,12 @@ export default function Layout({ children }) {
                 className="block w-full text-left hover:bg-blue-600 p-2 rounded"
               >
                 Book Ride
+              </button>
+              <button
+                onClick={() => navigate("/user/payments")}
+                className="block w-full text-left hover:bg-blue-600 p-2 rounded"
+              >
+                Payment History
               </button>
             </>
           )}

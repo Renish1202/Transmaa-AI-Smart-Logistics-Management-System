@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API from "../services/api";
 import SupportChatPanel from "../components/SupportChatPanel";
+import LiveTrackingMap from "../components/LiveTrackingMap";
 import {
   ResponsiveContainer,
   LineChart,
@@ -16,6 +17,7 @@ import {
 const navItems = [
   "Dashboard",
   "Orders / Loads",
+  "Ride History",
   "Dispatch Board",
   "Fleet",
   "Drivers",
@@ -81,6 +83,8 @@ export default function AdminDashboard() {
   const [ops, setOps] = useState(defaultOps);
   const [loading, setLoading] = useState(true);
   const [pendingDrivers, setPendingDrivers] = useState([]);
+  const [rideHistory, setRideHistory] = useState([]);
+  const [rideHistoryLoading, setRideHistoryLoading] = useState(false);
   const [tracking, setTracking] = useState([]);
   const [trackingLoading, setTrackingLoading] = useState(false);
   const [trackingError, setTrackingError] = useState("");
@@ -94,7 +98,7 @@ export default function AdminDashboard() {
   const handleLogout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("role");
-    navigate("/");
+    navigate("/login");
   };
 
   const refreshOps = async () => {
@@ -105,6 +109,18 @@ export default function AdminDashboard() {
   const refreshPendingDrivers = async () => {
     const res = await API.get("/admin/drivers/pending");
     setPendingDrivers(res.data || []);
+  };
+
+  const refreshRideHistory = async () => {
+    setRideHistoryLoading(true);
+    try {
+      const res = await API.get("/rides/admin/history");
+      setRideHistory(res.data || []);
+    } catch {
+      setRideHistory([]);
+    } finally {
+      setRideHistoryLoading(false);
+    }
   };
 
   const refreshTracking = async () => {
@@ -127,10 +143,15 @@ export default function AdminDashboard() {
   }, []);
 
   useEffect(() => {
-    if (active !== "Routes & Tracking") return;
+    if (!["Dashboard", "Routes & Tracking"].includes(active)) return;
     refreshTracking();
     const timer = setInterval(refreshTracking, 4000);
     return () => clearInterval(timer);
+  }, [active]);
+
+  useEffect(() => {
+    if (active !== "Ride History") return;
+    refreshRideHistory();
   }, [active]);
 
   const runAction = async (fn, successMsg) => {
@@ -249,6 +270,41 @@ export default function AdminDashboard() {
     { label: "Revenue (MTD)", value: `$${(ops.kpis.revenue_mtd / 1000000).toFixed(1)}M`, sub: "Month to date" },
   ], [ops]);
 
+  const trackingMapPoints = useMemo(
+    () =>
+      (tracking || []).map((item) => {
+        const truckLabel = item?.truck_number ? `Truck ${item.truck_number}` : null;
+        const driverLabel = item?.driver_id ? `Driver #${item.driver_id}` : "Unassigned driver";
+        const baseLabel = truckLabel || driverLabel;
+        return {
+          ride_id: item.ride_id,
+          label: `${item.load_id || `Ride #${item.ride_id || "-"}`} - ${baseLabel}`,
+          subtitle: `${item.pickup_location || "Pickup"} -> ${item.drop_location || "Drop"}`,
+          start_lat: item.pickup_lat,
+          start_lng: item.pickup_lng,
+          end_lat: item.drop_lat,
+          end_lng: item.drop_lng,
+          lat: item.lat,
+          lng: item.lng,
+          speed_kmh: item.speed_kmh,
+          accuracy_m: item.accuracy_m,
+          updated_at: item.updated_at,
+          path: Array.isArray(item.path) ? item.path : [],
+          route_path: Array.isArray(item.route_path) ? item.route_path : [],
+          status: item.status,
+        };
+      }),
+    [tracking]
+  );
+
+  const liveUnitCount = useMemo(
+    () =>
+      trackingMapPoints.filter(
+        (item) => typeof item.lat === "number" && typeof item.lng === "number"
+      ).length,
+    [trackingMapPoints]
+  );
+
   const renderDashboard = () => (
     <div className="space-y-6">
       <div className="grid xl:grid-cols-6 md:grid-cols-3 gap-4">
@@ -263,14 +319,15 @@ export default function AdminDashboard() {
 
       <div className="grid xl:grid-cols-3 gap-6">
         <Panel title="Live Operations">
-          <div className="h-[360px] rounded-xl bg-gradient-to-b from-slate-100 to-slate-200 p-4 relative overflow-hidden">
-            <div className="absolute top-4 right-4 bg-white/95 rounded-xl p-3 text-xs shadow">
-              <p className="font-semibold mb-2">Vehicle Status</p>
-              <p className="text-emerald-600">On Time</p>
-              <p className="text-amber-600">Delayed</p>
-              <p className="text-rose-600">Critical</p>
+          <div className="space-y-3">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              {trackingLoading
+                ? "Updating live fleet feed..."
+                : trackingError
+                  ? trackingError
+                  : `Live units on map: ${liveUnitCount}`}
             </div>
-            <p className="text-slate-500">Map panel ready for Leaflet/Mapbox websocket stream</p>
+            <LiveTrackingMap points={trackingMapPoints} heightClass="h-[360px]" />
           </div>
         </Panel>
 
@@ -348,6 +405,43 @@ export default function AdminDashboard() {
           </div>
         ))}
       </div>
+    </Panel>
+  );
+
+  const renderRideHistory = () => (
+    <Panel title="Ride History">
+      {rideHistoryLoading ? (
+        <p className="text-slate-500">Loading ride history...</p>
+      ) : rideHistory.length === 0 ? (
+        <p className="text-slate-500">No rides found.</p>
+      ) : (
+        <div className="overflow-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-slate-500 border-b border-slate-200">
+                <th className="py-2">Ride</th>
+                <th>Route</th>
+                <th>Customer</th>
+                <th>Driver</th>
+                <th>Payment</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rideHistory.map((ride) => (
+                <tr key={ride.id} className="border-b border-slate-100">
+                  <td className="py-2 font-semibold text-blue-700">LD-{String(ride.id).padStart(6, "0")}</td>
+                  <td>{ride.pickup_location} {"\u2192"} {ride.drop_location}</td>
+                  <td>{ride.passenger_email || ride.passenger_id || "N/A"}</td>
+                  <td>{ride.driver_email || ride.driver_id || "Unassigned"}</td>
+                  <td className="capitalize">{ride.payment_mode || ride.payment_method || "cash"} ({ride.payment_status || "pending"})</td>
+                  <td><Badge status={String(ride.status || "requested").replace("_", " ").replace(/\b\w/g, (c) => c.toUpperCase())} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </Panel>
   );
 
@@ -451,45 +545,9 @@ export default function AdminDashboard() {
       { label: "Fleet Status", value: ops.routes.status_ok, tone: "bg-violet-50 text-violet-700", dot: "bg-violet-500" },
     ];
 
-    const statusTone = (status) => {
-      if (status === "in_transit" || status === "started") return "bg-emerald-500";
-      if (status === "accepted") return "bg-blue-500";
-      if (status === "delivered" || status === "completed") return "bg-violet-500";
-      if (status === "cancelled") return "bg-rose-500";
-      return "bg-amber-500";
-    };
-
-    const trackingPoints = (tracking || [])
-      .filter((item) => typeof item.lat === "number" && typeof item.lng === "number")
-      .map((item) => ({
-        id: item.load_id || `LD-${String(item.ride_id || 0).padStart(6, "0")}`,
-        status: item.status || "active",
-        lat: item.lat,
-        lng: item.lng,
-        speed: item.speed_kmh,
-      }));
-
-    const bounds = trackingPoints.reduce(
-      (acc, item) => ({
-        minLat: Math.min(acc.minLat, item.lat),
-        maxLat: Math.max(acc.maxLat, item.lat),
-        minLng: Math.min(acc.minLng, item.lng),
-        maxLng: Math.max(acc.maxLng, item.lng),
-      }),
-      { minLat: 999, maxLat: -999, minLng: 999, maxLng: -999 }
+    const liveUnits = (tracking || []).filter(
+      (item) => typeof item.lat === "number" && typeof item.lng === "number"
     );
-
-    const projectPoint = (lat, lng) => {
-      if (!trackingPoints.length || bounds.minLat === 999) {
-        return { x: "50%", y: "50%" };
-      }
-      const latSpan = bounds.maxLat - bounds.minLat || 0.01;
-      const lngSpan = bounds.maxLng - bounds.minLng || 0.01;
-      const x = ((lng - bounds.minLng) / lngSpan) * 100;
-      const y = (1 - (lat - bounds.minLat) / latSpan) * 100;
-      const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
-      return { x: `${clamp(x, 5, 95)}%`, y: `${clamp(y, 5, 95)}%` };
-    };
 
     return (
       <div className="space-y-5">
@@ -549,40 +607,37 @@ export default function AdminDashboard() {
           <button className="text-xs text-slate-500 hover:text-slate-700">Clear Filters</button>
         </div>
 
-        <div
-          className="relative h-[420px] rounded-2xl border border-slate-200 overflow-hidden"
-          style={{
-            backgroundImage:
-              "linear-gradient(0deg, rgba(226,232,240,0.6), rgba(226,232,240,0.6)), repeating-linear-gradient(120deg, rgba(148,163,184,0.25) 0, rgba(148,163,184,0.25) 2px, transparent 2px, transparent 40px), repeating-linear-gradient(60deg, rgba(148,163,184,0.2) 0, rgba(148,163,184,0.2) 1px, transparent 1px, transparent 30px)",
-            backgroundColor: "#f8fafc",
-          }}
-        >
-          <div className="absolute top-4 right-4 bg-white/90 rounded-xl px-3 py-2 text-xs text-slate-600 shadow">
-            {trackingLoading ? "Updating live feed..." : trackingError ? trackingError : "Live GPS feed connected"}
+        <div className="space-y-3">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+            {trackingLoading
+              ? "Updating live feed..."
+              : trackingError
+                ? trackingError
+                : `Showing ${liveUnits.length} live truck/driver unit(s) in one map`}
           </div>
-          {!trackingLoading && trackingPoints.length === 0 && (
-            <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500">
-              No active routes to display.
+          <LiveTrackingMap points={trackingMapPoints} heightClass="h-[460px]" />
+          <div className="rounded-xl border border-slate-200 bg-white">
+            <div className="px-4 py-2 border-b border-slate-100 text-sm font-semibold text-slate-700">
+              Live Units ({liveUnits.length})
             </div>
-          )}
-          {trackingPoints.map((marker) => {
-            const pos = projectPoint(marker.lat, marker.lng);
-            return (
-              <div
-                key={marker.id}
-                className="absolute flex flex-col items-center"
-                style={{ left: pos.x, top: pos.y }}
-              >
-                <div className={`h-6 w-6 rounded-full ${statusTone(marker.status)} ring-4 ring-white flex items-center justify-center text-white text-[10px]`}>
-                  T
-                </div>
-                <div className="mt-1 text-[10px] font-semibold text-slate-600">{marker.id}</div>
-                {marker.speed ? (
-                  <div className="text-[9px] text-slate-400">{marker.speed} km/h</div>
-                ) : null}
-              </div>
-            );
-          })}
+            <div className="max-h-56 overflow-auto">
+              {liveUnits.length === 0 ? (
+                <p className="px-4 py-3 text-sm text-slate-500">No active GPS units available right now.</p>
+              ) : (
+                liveUnits.map((item) => (
+                  <div
+                    key={item.load_id || item.ride_id}
+                    className="px-4 py-2 border-b border-slate-100 text-xs text-slate-600 flex flex-wrap items-center gap-2"
+                  >
+                    <span className="font-semibold text-slate-700">{item.load_id}</span>
+                    <span>{item.truck_number ? `Truck ${item.truck_number}` : `Driver #${item.driver_id || "-"}`}</span>
+                    <span>{item.pickup_location || "Pickup"} {"->"} {item.drop_location || "Drop"}</span>
+                    {typeof item.speed_kmh === "number" ? <span>{item.speed_kmh} km/h</span> : null}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -673,6 +728,7 @@ export default function AdminDashboard() {
   const renderContent = () => {
     if (active === "Dashboard") return renderDashboard();
     if (active === "Orders / Loads") return renderOrders();
+    if (active === "Ride History") return renderRideHistory();
     if (active === "Dispatch Board") return renderDispatch();
     if (active === "Fleet") return renderFleetDrivers("Fleet - Trucks & Trailers Management", ops.fleet);
     if (active === "Drivers") return renderFleetDrivers("Driver Management", ops.drivers);

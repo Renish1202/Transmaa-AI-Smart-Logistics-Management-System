@@ -3,10 +3,10 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.core.security import get_current_user, require_admin
-from app.mongodb import ensure_indexes
+from app.mongodb import MONGO_ACTIVE_URL_MASKED, ensure_indexes
 from app.routes import admin, admin_ops, auth, drivers, finance, marketplace, payments, rides, trips, tracking
 from app.routes import ai_support, ai_agent
-from app.config import FRONTEND_BASE_URL
+from app.config import FRONTEND_BASE_URL, MONGODB_DB
 
 
 app = FastAPI(title="Transmaa API")
@@ -39,7 +39,10 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 @app.on_event("startup")
 def startup_event():
-    ensure_indexes()
+    try:
+        ensure_indexes()
+    except Exception as exc:
+        print(f"Mongo index initialization skipped: {exc}")
 
 @app.get("/")
 def root():
@@ -47,7 +50,11 @@ def root():
 
 @app.get("/healthz")
 def healthz():
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "mongo_db": MONGODB_DB,
+        "mongo_url": MONGO_ACTIVE_URL_MASKED,
+    }
 
 
 @app.get("/protected")

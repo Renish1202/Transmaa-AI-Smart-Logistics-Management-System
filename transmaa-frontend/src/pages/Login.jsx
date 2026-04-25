@@ -6,15 +6,19 @@ export default function Login() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    if (isSubmitting) return;
+    setIsSubmitting(true);
 
     try {
+      const normalizedEmail = email.trim().toLowerCase();
 
       const formData = new URLSearchParams();
-      formData.append("username", email);
+      formData.append("username", normalizedEmail);
       formData.append("password", password);
 
       const response = await API.post(
@@ -39,8 +43,9 @@ export default function Login() {
       navigate("/dashboard");
 
     } catch (error) {
-      console.log(error.response?.data);
       alert("Invalid credentials");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -85,9 +90,10 @@ export default function Login() {
 
           <button
             type="submit"
+            disabled={isSubmitting}
             className="w-full bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 transition"
           >
-            Login
+            {isSubmitting ? "Logging in..." : "Login"}
           </button>
 
         </form>

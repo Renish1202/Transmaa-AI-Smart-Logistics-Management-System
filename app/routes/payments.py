@@ -5,6 +5,7 @@ from uuid import uuid4
 
 import requests
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from pydantic import BaseModel, Field
 
 from app.config import (
     PAYMENT_CURRENCY,
@@ -19,8 +20,10 @@ from app.mongodb import (
     get_next_sequence,
     invoices_collection,
     payments_collection,
+    rides_collection,
     serialize_doc,
     serialize_docs,
+    users_collection,
     utc_now,
 )
 from app.schemas.payment import PaymentConfigResponse, PaymentOrderResponse, PaymentVerifyRequest
@@ -28,17 +31,38 @@ from app.schemas.payment import PaymentConfigResponse, PaymentOrderResponse, Pay
 router = APIRouter(prefix="/payments", tags=["Payments"])
 
 
+class UserRideReviewRequest(BaseModel):
+    rating: int = Field(ge=1, le=5)
+    review: str | None = None
+
+
 def _gateway_enabled() -> bool:
     return PAYMENT_PROVIDER == "razorpay" and bool(RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET)
 
 
 def _invoice_query_for_user(invoice_id: int, current_user: dict) -> dict:
+    user_id = current_user.get("id")
+    user_email = (current_user.get("email") or "").lower()
+    ride_ids = [
+        ride.get("id")
+        for ride in serialize_docs(
+            rides_collection.find({"passenger_id": user_id}, {"id": 1, "_id": 0})
+        )
+        if ride.get("id") is not None
+    ]
+
+    ownership_clauses = []
+    if user_id is not None:
+        ownership_clauses.append({"customer_id": user_id})
+    if user_email:
+        ownership_clauses.append({"customer_email": user_email})
+        ownership_clauses.append({"customer": user_email})
+    if ride_ids:
+        ownership_clauses.append({"load_id": {"$in": ride_ids}})
+
     return {
         "id": invoice_id,
-        "$or": [
-            {"customer_id": current_user.get("id")},
-            {"customer_email": (current_user.get("email") or "").lower()},
-        ],
+        "$or": ownership_clauses or [{"id": -1}],
     }
 
 
@@ -60,6 +84,49 @@ def _invoice_remaining_amount(invoice: dict) -> float:
 
 def _invoice_currency(invoice: dict) -> str:
     return str(invoice.get("currency") or PAYMENT_CURRENCY or "INR").upper()
+
+
+def _enrich_ride_payment_history(rows: list[dict]) -> list[dict]:
+    if not rows:
+        return []
+
+    ride_ids = [row.get("ride_id") for row in rows if row.get("ride_id") is not None]
+    rides = serialize_docs(rides_collection.find({"id": {"$in": ride_ids}})) if ride_ids else []
+    rides_by_id = {ride.get("id"): ride for ride in rides}
+
+    user_ids = set()
+    for row in rows:
+        if row.get("user_id") is not None:
+            user_ids.add(row["user_id"])
+        if row.get("driver_id") is not None:
+            user_ids.add(row["driver_id"])
+
+    users = serialize_docs(users_collection.find({"id": {"$in": list(user_ids)}})) if user_ids else []
+    user_email_map = {user.get("id"): user.get("email") for user in users}
+
+    enriched = []
+    for row in rows:
+        item = dict(row)
+        ride = rides_by_id.get(item.get("ride_id")) or {}
+        ride_price = float(ride.get("price") or 0)
+        ride_currency = str(ride.get("price_currency") or item.get("currency") or "INR").upper()
+        payment_amount = float(item.get("amount") or 0)
+
+        # Keep payment history useful even for legacy rows where stored amount is missing.
+        if payment_amount <= 0 and ride_price > 0:
+            item["amount"] = ride_price
+            item["currency"] = ride_currency
+
+        item["pickup_location"] = ride.get("pickup_location")
+        item["drop_location"] = ride.get("drop_location")
+        item["ride_status"] = ride.get("status")
+        item["ride_price"] = ride_price
+        item["ride_price_currency"] = ride_currency
+        item["user_email"] = user_email_map.get(item.get("user_id"))
+        item["driver_email"] = user_email_map.get(item.get("driver_id"))
+        enriched.append(item)
+
+    return enriched
 
 
 def _mark_invoice_paid(invoice: dict, payment_id: str, order_id: str):
@@ -97,12 +164,26 @@ def my_invoices(current_user: dict = Depends(get_current_user)):
     if current_user.get("role") != "user":
         raise HTTPException(status_code=403, detail="Only users can access invoices")
 
-    query = {
-        "$or": [
-            {"customer_id": current_user.get("id")},
-            {"customer_email": (current_user.get("email") or "").lower()},
-        ]
-    }
+    user_id = current_user.get("id")
+    user_email = (current_user.get("email") or "").lower()
+    ride_ids = [
+        ride.get("id")
+        for ride in serialize_docs(
+            rides_collection.find({"passenger_id": user_id}, {"id": 1, "_id": 0})
+        )
+        if ride.get("id") is not None
+    ]
+
+    ownership_clauses = []
+    if user_id is not None:
+        ownership_clauses.append({"customer_id": user_id})
+    if user_email:
+        ownership_clauses.append({"customer_email": user_email})
+        ownership_clauses.append({"customer": user_email})
+    if ride_ids:
+        ownership_clauses.append({"load_id": {"$in": ride_ids}})
+
+    query = {"$or": ownership_clauses} if ownership_clauses else {"id": -1}
     return serialize_docs(invoices_collection.find(query).sort("id", -1))
 
 
@@ -111,6 +192,70 @@ def my_transactions(current_user: dict = Depends(get_current_user)):
     if current_user.get("role") != "user":
         raise HTTPException(status_code=403, detail="Only users can access transactions")
     return serialize_docs(payments_collection.find({"user_id": current_user.get("id")}).sort("id", -1))
+
+
+@router.get("/my-ride-payments")
+def my_ride_payments(current_user: dict = Depends(get_current_user)):
+    if current_user.get("role") != "user":
+        raise HTTPException(status_code=403, detail="Only users can access payment history")
+
+    rows = serialize_docs(
+        payments_collection.find({"payment_context": "ride", "user_id": current_user.get("id")}).sort("id", -1)
+    )
+    return _enrich_ride_payment_history(rows)
+
+
+@router.get("/driver/ride-payments")
+def driver_ride_payments(current_user: dict = Depends(get_current_user)):
+    if current_user.get("role") != "driver":
+        raise HTTPException(status_code=403, detail="Only drivers can access payment history")
+
+    rows = serialize_docs(
+        payments_collection.find({"payment_context": "ride", "driver_id": current_user.get("id")}).sort("id", -1)
+    )
+    return _enrich_ride_payment_history(rows)
+
+
+@router.put("/my-ride-payments/{record_id}/review")
+def submit_user_review(
+    record_id: int,
+    payload: UserRideReviewRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    if current_user.get("role") != "user":
+        raise HTTPException(status_code=403, detail="Only users can submit ride reviews")
+
+    payment = serialize_doc(
+        payments_collection.find_one({"id": record_id, "payment_context": "ride"})
+    )
+    if not payment:
+        raise HTTPException(status_code=404, detail="Ride payment record not found")
+
+    if payment.get("user_id") != current_user.get("id"):
+        raise HTTPException(status_code=403, detail="Not authorized to review this ride payment")
+
+    review_text = (payload.review or "").strip()
+    if len(review_text) > 500:
+        raise HTTPException(status_code=400, detail="Review must be 500 characters or fewer")
+
+    payments_collection.update_one(
+        {"id": record_id},
+        {
+            "$set": {
+                "user_rating": int(payload.rating),
+                "user_review": review_text,
+                "user_reviewed_at": utc_now(),
+            }
+        },
+    )
+    return {"message": "Review submitted", "record_id": record_id}
+
+
+@router.get("/admin/ride-payments")
+def admin_ride_payments(current_user: dict = Depends(require_admin)):
+    _ = current_user
+    rows = serialize_docs(payments_collection.find({"payment_context": "ride"}).sort("id", -1))
+    return _enrich_ride_payment_history(rows)
 
 
 @router.post("/invoices/{invoice_id}/create-order", response_model=PaymentOrderResponse)

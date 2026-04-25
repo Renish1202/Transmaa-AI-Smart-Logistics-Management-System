@@ -24,7 +24,7 @@ export default function Dashboard() {
       })
       .catch(() => {
         localStorage.removeItem("token");
-        navigate("/");
+        navigate("/login");
       });
   }, [navigate]);
 
